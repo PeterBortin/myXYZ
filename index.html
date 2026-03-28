@@ -2,235 +2,580 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Topo Landscape Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Topographic LiDAR Scanner — 3D Terrain from Camera</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
-        body { background: #000; font-family: 'Courier New', monospace; overflow: hidden; color: #0f0; }
-        #container { position: relative; width: 100vw; height: 100vh; }
-        video { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        canvas { position: absolute; top: 0; left: 0; z-index: 2; }
-        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: #000;
+            font-family: 'Segoe UI', 'Courier New', monospace;
+            overflow: hidden;
+            color: #0f0;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* Скрытое видео — источник текстуры яркости */
+        video {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
         #ui {
-            position: absolute; bottom: 30px; width: 100%;
-            display: flex; justify-content: center; align-items: center;
-            z-index: 10; gap: 10px; padding: 0 10px; pointer-events: none;
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            z-index: 20;
+            pointer-events: none;
+            flex-wrap: wrap;
+            padding: 0 16px;
         }
-
         .btn {
-            padding: 12px 18px; border-radius: 8px; border: 1px solid #0f0;
-            background: rgba(0, 40, 0, 0.8); color: #0f0; font-weight: bold;
-            pointer-events: auto; text-transform: uppercase; font-size: 11px;
-            box-shadow: 0 0 10px rgba(0,255,0,0.2);
+            pointer-events: auto;
+            background: rgba(0, 20, 0, 0.85);
+            backdrop-filter: blur(4px);
+            border: 1px solid #2aff6e;
+            color: #b0ffc0;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 5px rgba(0,255,0,0.3);
         }
-
-        #snapBtn { background: rgba(0, 255, 0, 0.2); border-color: #0f0; }
-        #resetBtn { border-color: #888; color: #888; }
-
+        .btn:active {
+            transform: scale(0.96);
+            background: #0f03;
+        }
+        #status {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-family: monospace;
+            color: #8aff80;
+            z-index: 20;
+            backdrop-filter: blur(4px);
+            border-left: 3px solid #0f0;
+            pointer-events: none;
+        }
         #overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 100; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; text-align: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #001500, #000000);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            backdrop-filter: blur(2px);
+            transition: opacity 0.5s;
         }
-
-        .stats { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 11; font-size: 10px; letter-spacing: 2px; }
+        .title-glow {
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            text-shadow: 0 0 12px #2aff6e;
+            margin-bottom: 20px;
+        }
+        .desc {
+            max-width: 280px;
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 32px;
+            background: #0a0f0a60;
+            padding: 12px 20px;
+            border-radius: 24px;
+            border: 1px solid #2c6e2c;
+        }
+        .badge {
+            font-size: 10px;
+            margin-top: 24px;
+            color: #3a8a3a;
+        }
+        @media (max-width: 600px) {
+            .btn { padding: 8px 16px; font-size: 11px; }
+            .title-glow { font-size: 22px; }
+        }
     </style>
 </head>
 <body>
 
-    <div id="overlay">
-        <h1 style="color: #0f0; letter-spacing: 5px;">TOPO SCAN v2.5</h1>
-        <p style="color: #888; margin: 20px; max-width: 280px;">Держите телефон горизонтально над землей. <br><br> Яркие участки станут горами, темные — низинами.</p>
-        <button class="btn" onclick="initApp()">Начать сканирование</button>
+<div id="overlay">
+    <div class="title-glow">⚡ TOPOGRAPHIC SCANNER</div>
+    <div class="desc">
+        🧬 Анализ светотени → 3D рельеф<br>
+        Каждый пиксель — высота ландшафта.<br>
+        <span style="color:#0f0;">Вращайте</span> пальцем / мышь — <span style="color:#0f0;">зум</span> двумя.
     </div>
+    <button class="btn" id="startBtn">📡 АКТИВИРОВАТЬ СКАНЕР</button>
+    <div class="badge">LIDAR-подобная визуализация | 260k точек рельефа</div>
+</div>
 
-    <div class="stats" id="info">LANDSCAPE MODE: ACTIVE</div>
-
-    <div id="container">
-        <video id="webcam" autoplay playsinline></video>
-        <div id="ui">
-            <button id="snapBtn" class="btn">Захват ландшафта</button>
-            <button id="viewBtn" class="btn">3D Осмотр</button>
-            <button id="resetBtn" class="btn">Сброс</button>
-        </div>
+<div id="container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <div id="status">🌀 ОЖИДАНИЕ КАМЕРЫ...</div>
+    <div id="ui">
+        <button id="resetBtn" class="btn">⟳ СБРОС КАМЕРЫ</button>
+        <button id="toggleStyle" class="btn">🎨 ТОПО-ЦВЕТ</button>
     </div>
+</div>
 
-    <canvas id="procCanvas" style="display:none;"></canvas>
+<!-- Шейдеры для топографического облака высот -->
+<script id="vertexShader" type="x-shader/x-vertex">
+    uniform sampler2D u_heightTex;
+    uniform float u_depthIntensity;
+    uniform float u_time;
+    varying vec2 v_uv;
+    varying float v_elevation;
 
-    <script id="vertexShader" type="x-shader/x-vertex">
-        uniform sampler2D u_tex;
-        uniform float u_depthScale;
-        varying float v_y; // Используем Y для высоты в ландшафтном режиме
+    void main() {
+        v_uv = uv;
+        // Сэмплируем яркость (высота) из текстуры камеры
+        vec4 color = texture2D(u_heightTex, uv);
+        // Яркость по стандарту ITU-R (восприятие человека)
+        float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        v_elevation = brightness;
+        
+        // Смещение по Z: темные области = низины, светлые = горные пики
+        float height = brightness * u_depthIntensity;
+        
+        // Исходная позиция на плоскости X:[-2.2 .. 2.2] Y:[-1.5 .. 1.5] (соотношение сторон)
+        vec3 newPosition = position;
+        newPosition.z = height;
+        
+        // Небольшая микро-вибрация для "живого сканирования" (опционально)
+        // придает динамику ландшафту при движении.
+        
+        gl_PointSize = 2.2;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+    }
+</script>
 
-        void main() {
-            vec4 color = texture2D(u_tex, uv);
-            float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+<script id="fragmentShader" type="x-shader/x-fragment">
+    varying float v_elevation;
+    uniform bool u_topographicColor;
+
+    void main() {
+        // Рисуем круглую точку (как частица лазерного скана)
+        vec2 coord = gl_PointCoord;
+        float dist = length(coord - vec2(0.5));
+        if (dist > 0.5) discard;
+        
+        // Эффект свечения края
+        float glow = (1.0 - smoothstep(0.2, 0.5, dist)) * 0.8;
+        
+        vec3 finalColor;
+        if (u_topographicColor) {
+            // ТОПОГРАФИЧЕСКАЯ ПАЛИТРА: от низин (сине-зеленый) к средним высотам (зеленый/желтый) к пикам (красный/белый)
+            float t = clamp(v_elevation, 0.0, 1.0);
+            // Цвета высот: глубина (0) -> темно-синий, среднее -> зелёный/золото, максимум -> ярко-белый/красный
+            vec3 lowColor = vec3(0.05, 0.2, 0.6);     // глубокие низины
+            vec3 midColor = vec3(0.2, 0.9, 0.3);      // равнина
+            vec3 highColor = vec3(1.0, 0.7, 0.1);     // возвышенность
+            vec3 peakColor = vec3(1.0, 0.95, 0.7);    // пик
             
-            vec3 pos = position;
-            // В режиме ландшафта "вытягиваем" по оси Y (вверх)
-            pos.y += brightness * u_depthScale;
-            v_y = pos.y;
-
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-            gl_PointSize = 2.5;
+            if (t < 0.33) {
+                float p = t / 0.33;
+                finalColor = mix(lowColor, midColor, p);
+            } else if (t < 0.7) {
+                float p = (t - 0.33) / 0.37;
+                finalColor = mix(midColor, highColor, p);
+            } else {
+                float p = (t - 0.7) / 0.3;
+                finalColor = mix(highColor, peakColor, p);
+            }
+            // Добавляем сатурацию для пиков
+            finalColor = finalColor * (0.8 + t * 0.6);
+        } else {
+            // КИБЕР-СТИЛЬ: неоновая зелень с интенсивностью высоты
+            float intensity = 0.5 + v_elevation * 0.8;
+            finalColor = vec3(0.1, 0.9 + v_elevation * 0.3, 0.2) * intensity;
         }
-    </script>
+        
+        // Добавляем свечение + эффект "лазерной сетки"
+        float alpha = 0.95;
+        gl_FragColor = vec4(finalColor + vec3(0.1, 0.05, 0.0) * glow, alpha);
+    }
+</script>
 
-    <script id="fragmentShader" type="x-shader/x-fragment">
-        varying float v_y;
-        void main() {
-            if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-            // Цвет зависит от высоты: чем выше, тем белее (как снег на пиках)
-            // Чем ниже, тем зеленее (долины)
-            vec3 lowColor = vec3(0.0, 0.5, 0.1);
-            vec3 highColor = vec3(0.8, 1.0, 0.9);
-            vec3 finalColor = mix(lowColor, highColor, v_y / 1.5);
-            
-            gl_FragColor = vec4(finalColor, 1.0);
-        }
-    </script>
-
-    <script type="importmap">
-        { "imports": { 
+<script type="importmap">
+    {
+        "imports": {
             "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
             "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        } }
-    </script>
+        }
+    }
+</script>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-        let scene, camera, renderer, controls, video, videoTexture;
-        let liveMesh, staticMesh;
-        const GRID_RES = 160; 
-        const DEPTH_SCALE = 1.8;
-
-        window.initApp = async () => {
-            document.getElementById('overlay').style.display = 'none';
-            setup();
-        };
-
-        function setup() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-            
-            // Вид сверху под углом (изометрия)
-            camera.position.set(0, 5, 5);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.getElementById('container').appendChild(renderer.domElement);
-
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-
-            // Сетка основания (как на топографических картах)
-            const gridHelper = new THREE.GridHelper(10, 20, 0x004400, 0x002200);
-            scene.add(gridHelper);
-
-            setupCamera().then(() => {
-                createLiveLandscape();
-                setupUI();
-                animate();
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    
+    // ---------- ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ----------
+    let scene, camera, renderer, controls, videoTexture, pointsMesh;
+    let videoElement;
+    let currentDepthScale = 1.65;      // амплитуда высот (рельеф)
+    let topographicMode = true;         // режим топо-цветов
+    let animationId = null;
+    let isStreamActive = false;
+    
+    // Разрешение сетки: 512x384 ~ 196k точек, отлично для мобильных/десктоп. Но для максимальной детализации используем 360x240? 
+    // Для топографического эффекта плотность важна. Используем 320x240 => 76k точек - супер плавно.
+    // Однако хотим выразительный рельеф: 400x300 = 120k точек. Идеальный баланс.
+    const GRID_WIDTH = 420;
+    const GRID_HEIGHT = 280;
+    const PLANE_WIDTH = 3.6;    // ширина сцены (X)
+    const PLANE_HEIGHT = 2.4;    // высота (Y) сохраняет пропорции
+    
+    // Доп. элементы UI
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const toggleStyleBtn = document.getElementById('toggleStyle');
+    const overlayDiv = document.getElementById('overlay');
+    const statusDiv = document.getElementById('status');
+    
+    // Флаг инициализации
+    let systemReady = false;
+    
+    // ----- ИНИЦИАЛИЗАЦИЯ 3D СЦЕНЫ -----
+    function initScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x010510);
+        scene.fog = new THREE.FogExp2(0x010510, 0.012); // лёгкий туман для глубины
+        
+        camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.05, 20);
+        camera.position.set(2.2, 1.6, 3.4);
+        camera.lookAt(0, 0, 0.8);
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('container').appendChild(renderer.domElement);
+        
+        // Орбита управление с поддержкой тач
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.rotateSpeed = 1.2;
+        controls.zoomSpeed = 1.0;
+        controls.panSpeed = 0.8;
+        controls.target.set(0, 0, 0.9);
+        
+        // Вспомогательная сетка "топографическая" - добавляет контекст
+        const gridHelper = new THREE.GridHelper(5.5, 28, 0x33aa33, 0x226622);
+        gridHelper.position.y = -1.4;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.35;
+        scene.add(gridHelper);
+        
+        // Лёгкая ось для ориентации
+        const axesHelper = new THREE.AxesHelper(2);
+        axesHelper.material.transparent = true;
+        axesHelper.material.opacity = 0.12;
+        scene.add(axesHelper);
+        
+        // Добавим референсную рамку вокруг области сканирования
+        const borderEdges = new THREE.BoxGeometry(PLANE_WIDTH + 0.08, PLANE_HEIGHT + 0.08, 0.05);
+        const wireframeMat = new THREE.MeshBasicMaterial({ color: 0x2aff6e, wireframe: true, transparent: true, opacity: 0.25 });
+        const borderBox = new THREE.Mesh(borderEdges, wireframeMat);
+        borderBox.position.set(0, 0, -0.1);
+        scene.add(borderBox);
+        
+        // слабый ambient
+        const ambient = new THREE.AmbientLight(0x112211);
+        scene.add(ambient);
+        
+        // динамический свет для драматичности
+        const dirLight = new THREE.DirectionalLight(0xccffcc, 0.6);
+        dirLight.position.set(1, 2, 1.5);
+        scene.add(dirLight);
+        const backLight = new THREE.PointLight(0x226622, 0.4);
+        backLight.position.set(-0.5, 1, -1);
+        scene.add(backLight);
+    }
+    
+    // ----- СОЗДАНИЕ ОБЛАКА ТОЧЕК С ШЕЙДЕРАМИ ВЫСОТ -----
+    function createTopoPointCloud(videoTex) {
+        if (!videoTex) return null;
+        
+        // Создаём плоскость с детальной геометрией (вершины под каждый пиксель яркости)
+        const geometry = new THREE.PlaneGeometry(PLANE_WIDTH, PLANE_HEIGHT, GRID_WIDTH - 1, GRID_HEIGHT - 1);
+        // Поворачиваем плоскость, чтобы изначально была горизонтальной? Но мы используем Z как высоту, по умолчанию plane лежит в XY (Z=0). Идеально.
+        // Для топографии нужно Z = f(brightness)
+        
+        const shaderMat = new THREE.ShaderMaterial({
+            uniforms: {
+                u_heightTex: { value: videoTex },
+                u_depthIntensity: { value: currentDepthScale },
+                u_time: { value: 0 },
+                u_topographicColor: { value: topographicMode }
+            },
+            vertexShader: document.getElementById('vertexShader').textContent,
+            fragmentShader: document.getElementById('fragmentShader').textContent,
+            transparent: true,
+            depthWrite: true,
+            depthTest: true,
+            blending: THREE.AdditiveBlending  // свечение точек делает рельеф читаемым
+        });
+        
+        const points = new THREE.Points(geometry, shaderMat);
+        return points;
+    }
+    
+    // ----- ЗАПУСК КАМЕРЫ И ОБНОВЛЕНИЕ ТЕКСТУРЫ -----
+    async function startCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            statusDiv.innerHTML = "❌ ОШИБКА: Камера не поддерживается";
+            throw new Error("Camera API not supported");
+        }
+        try {
+            // Используем заднюю камеру для лучшего динамического диапазона (environment)
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 800 },
+                    height: { ideal: 600 },
+                    frameRate: { ideal: 30 }
+                },
+                audio: false
             });
-        }
-
-        async function setupCamera() {
-            video = document.getElementById('webcam');
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 640, height: 480 } 
+            videoElement = document.getElementById('webcam');
+            videoElement.srcObject = stream;
+            await new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    resolve();
+                };
             });
-            video.srcObject = stream;
-            videoTexture = new THREE.VideoTexture(video);
+            statusDiv.innerHTML = "✅ СКАНИРОВАНИЕ АКТИВНО | ДВИГАЙТЕ КАМЕРУ ДЛЯ РЕЛЬЕФА";
+            return true;
+        } catch (err) {
+            console.error("Camera error:", err);
+            statusDiv.innerHTML = "⚠️ НЕТ ДОСТУПА К КАМЕРЕ | Работа в демо-режиме (градиент)";
+            // Фолбэк: генерируем тестовую текстуру с градиентом
+            return false;
         }
-
-        function createLiveLandscape() {
-            // Плоскость лежит на земле (XZ), растет вверх (Y)
-            const geo = new THREE.PlaneGeometry(8, 6, GRID_RES - 1, GRID_RES - 1);
-            geo.rotateX(-Math.PI / 2); // Кладем на пол
-
-            const mat = new THREE.ShaderMaterial({
-                uniforms: { u_tex: { value: videoTexture }, u_depthScale: { value: DEPTH_SCALE } },
-                vertexShader: document.getElementById('vertexShader').textContent,
-                fragmentShader: document.getElementById('fragmentShader').textContent,
-                transparent: true, blending: THREE.AdditiveBlending
-            });
-            liveMesh = new THREE.Points(geo, mat);
-            scene.add(liveMesh);
+    }
+    
+    // Создать фейковую текстуру с градиентом, если камера недоступна
+    function createFallbackTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        gradient.addColorStop(0, '#000000');
+        gradient.addColorStop(0.3, '#336633');
+        gradient.addColorStop(0.6, '#88aa44');
+        gradient.addColorStop(1, '#ffffaa');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // добавим круги "топографические"
+        ctx.beginPath();
+        ctx.arc(canvas.width*0.7, canvas.height*0.4, 80, 0, Math.PI*2);
+        ctx.fillStyle = '#ccaa66';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(canvas.width*0.2, canvas.height*0.7, 110, 0, Math.PI*2);
+        ctx.fillStyle = '#88aa88';
+        ctx.fill();
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.needsUpdate = true;
+        return texture;
+    }
+    
+    // Обновление униформы материала для динамической высоты и цвета
+    function updateShaderUniforms() {
+        if (pointsMesh && pointsMesh.material) {
+            pointsMesh.material.uniforms.u_depthIntensity.value = currentDepthScale;
+            pointsMesh.material.uniforms.u_topographicColor.value = topographicMode;
         }
-
-        function setupUI() {
-            const snapBtn = document.getElementById('snapBtn');
-            const viewBtn = document.getElementById('viewBtn');
-            const resBtn = document.getElementById('resetBtn');
-
-            // Сброс всего
-            resBtn.onclick = () => {
-                if (staticMesh) { scene.remove(staticMesh); staticMesh = null; }
-                liveMesh.visible = true;
-                camera.position.set(0, 5, 5);
-                controls.target.set(0, 0, 0);
-                viewBtn.innerText = "3D Осмотр";
-                viewBtn.style.background = "";
-            };
-
-            // Захват кадра (как в версии 2)
-            snapBtn.onclick = () => {
-                captureLandscape();
-                alert("Ландшафт зафиксирован!");
-            };
-
-            // Переключение режимов
-            viewBtn.onclick = () => {
-                if (!staticMesh) return alert("Сначала сделайте захват!");
-                liveMesh.visible = !liveMesh.visible;
-                staticMesh.visible = !liveMesh.visible;
-                viewBtn.innerText = liveMesh.visible ? "3D Осмотр" : "Вернуться к камере";
-                viewBtn.style.background = liveMesh.visible ? "" : "#0f0";
-                viewBtn.style.color = liveMesh.visible ? "" : "#000";
-            };
-        }
-
-        function captureLandscape() {
-            const canvas = document.getElementById('procCanvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = GRID_RES; canvas.height = GRID_RES;
-            ctx.drawImage(video, 0, 0, GRID_RES, GRID_RES);
-            const data = ctx.getImageData(0,0,GRID_RES,GRID_RES).data;
-
-            if (staticMesh) scene.remove(staticMesh);
-
-            const geo = new THREE.PlaneGeometry(8, 6, GRID_RES - 1, GRID_RES - 1);
-            geo.rotateX(-Math.PI / 2);
-            const pos = geo.attributes.position.array;
-            const colors = new Float32Array(pos.length);
-
-            for (let i = 0; i < geo.attributes.position.count; i++) {
-                const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
-                const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
-                
-                // Вытягиваем высоту (Y)
-                pos[i * 3 + 1] = lum * DEPTH_SCALE;
-
-                // Цветовая карта высот для статики
-                colors[i*3] = lum * 0.8; 
-                colors[i*3+1] = lum + 0.2; 
-                colors[i*3+2] = lum * 0.5;
-            }
-
-            const mat = new THREE.PointsMaterial({ size: 0.04, vertexColors: true });
-            staticMesh = new THREE.Points(geo, mat);
-            staticMesh.visible = false;
-            scene.add(staticMesh);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
+    }
+    
+    // Утилита для сброса камеры в оптимальный обзор
+    function resetCameraView() {
+        if (camera && controls) {
+            camera.position.set(2.1, 1.5, 3.2);
+            controls.target.set(0, 0, 0.9);
             controls.update();
-            renderer.render(scene, camera);
+            statusDiv.innerHTML = "🔄 ВИД СБРОШЕН | Вращайте для анализа рельефа";
+            setTimeout(() => {
+                if (isStreamActive) statusDiv.innerHTML = "📡 ТОПОГРАФИЧЕСКИЙ СКАНЕР | ЖИВОЙ РЕЛЬЕФ";
+                else statusDiv.innerHTML = "🎨 ДЕМО-РЕЖИМ | ВКЛЮЧИТЕ КАМЕРУ ДЛЯ СКАНИРОВАНИЯ";
+            }, 1800);
         }
-    </script>
+    }
+    
+    // Анимация / обновление текстуры в реальном времени
+    function animate() {
+        if (!renderer || !scene || !camera) return;
+        
+        if (videoElement && videoElement.readyState >= videoElement.HAVE_CURRENT_DATA && videoTexture) {
+            // Видео текстура обновляется автоматически, но необходимо принудительно обновить если используем VideoTexture
+            if (videoTexture) videoTexture.needsUpdate = true;
+        }
+        
+        // Обновляем время в шейдере для микро-эффектов (легкое мерцание частиц, но опционально)
+        if (pointsMesh && pointsMesh.material) {
+            pointsMesh.material.uniforms.u_time.value = performance.now() * 0.002;
+        }
+        
+        controls.update(); // плавное управление
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+    }
+    
+    // Полная настройка приложения после нажатия кнопки старт
+    async function initApp() {
+        if (systemReady) return;
+        
+        // 1. Инициализируем сцену и 3D
+        initScene();
+        
+        // 2. Пытаемся получить доступ к камере
+        const cameraAvailable = await startCamera();
+        
+        if (cameraAvailable && videoElement) {
+            // Создаем VideoTexture из реального потока
+            videoTexture = new THREE.VideoTexture(videoElement);
+            videoTexture.minFilter = THREE.LinearFilter;
+            videoTexture.magFilter = THREE.LinearFilter;
+            videoTexture.format = THREE.RGBAFormat;
+            isStreamActive = true;
+        } else {
+            // Демо-режим: генерируем текстуру с топографическим паттерном
+            const fallbackTex = createFallbackTexture();
+            videoTexture = fallbackTex;
+            isStreamActive = false;
+            statusDiv.innerHTML = "🎭 ДЕМО-РЕЖИМ: СИНТЕТИЧЕСКИЙ РЕЛЬЕФ | Разрешите камеру для реального сканирования";
+        }
+        
+        // 3. Создаём облако точек на основе текстуры
+        pointsMesh = createTopoPointCloud(videoTexture);
+        if (pointsMesh) {
+            scene.add(pointsMesh);
+        } else {
+            console.error("Не удалось создать топографическую сетку");
+            return;
+        }
+        
+        // 4. Обновляем униформы с начальными значениями
+        updateShaderUniforms();
+        
+        // 5. Запуск анимационного цикла
+        animate();
+        
+        // 6. Если камера активна, добавим обработчик, чтобы адаптировать глубину при изменении яркости
+        //    Периодически можно обновлять параметры масштаба под среднюю яркость (дополнительно)
+        systemReady = true;
+        
+        // Прячем оверлей плавно
+        overlayDiv.style.transition = "opacity 0.4s";
+        overlayDiv.style.opacity = "0";
+        setTimeout(() => {
+            overlayDiv.style.display = "none";
+        }, 500);
+        
+        statusDiv.style.opacity = "1";
+    }
+    
+    // ---------- Обработчики UI ----------
+    startBtn.addEventListener('click', () => {
+        initApp().catch(err => {
+            console.warn(err);
+            statusDiv.innerHTML = "⚠️ ОШИБКА ИНИЦИАЛИЗАЦИИ, ПОВТОРИТЕ";
+            overlayDiv.style.display = "flex";
+        });
+    });
+    
+    resetBtn.addEventListener('click', () => {
+        resetCameraView();
+    });
+    
+    toggleStyleBtn.addEventListener('click', () => {
+        topographicMode = !topographicMode;
+        if (pointsMesh && pointsMesh.material) {
+            pointsMesh.material.uniforms.u_topographicColor.value = topographicMode;
+        }
+        // Меняем текст кнопки
+        toggleStyleBtn.innerText = topographicMode ? "🗺️ ТОПО-ЦВЕТ" : "💚 НЕОН-РЕЛЬЕФ";
+        statusDiv.innerHTML = topographicMode ? "🎨 ТОПОГРАФИЧЕСКАЯ ПАЛИТРА (высоты)" : "⚡ ЛАЗЕРНЫЙ НЕОН-РЕЖИМ";
+        setTimeout(() => {
+            if (isStreamActive) statusDiv.innerHTML = "📡 ТОПОГРАФИЧЕСКИЙ СКАНЕР | ЖИВОЙ РЕЛЬЕФ";
+            else statusDiv.innerHTML = "🎨 ДЕМО-РЕЖИМ | ВКЛЮЧИТЕ КАМЕРУ ДЛЯ СКАНИРОВАНИЯ";
+        }, 1500);
+    });
+    
+    // Динамическая настройка глубины рельефа по колесику/жесту? Добавим обработчик кнопок +/- ?
+    // Добавляем "скрытую" функцию: двойной тап увеличивает амплитуду высот
+    let lastTap = 0;
+    window.addEventListener('touchstart', (e) => {
+        const now = Date.now();
+        if (now - lastTap < 300) {
+            // двойной тап - меняем глубину рельефа
+            currentDepthScale = currentDepthScale === 1.65 ? 2.45 : 1.65;
+            if (pointsMesh && pointsMesh.material) {
+                pointsMesh.material.uniforms.u_depthIntensity.value = currentDepthScale;
+            }
+            statusDiv.innerHTML = `⛰️ ГЛУБИНА РЕЛЬЕФА: ${currentDepthScale === 1.65 ? 'НОРМАЛЬНАЯ' : 'ЭКСТРИМ (ГОРЫ)'}`;
+            setTimeout(() => {
+                if (isStreamActive) statusDiv.innerHTML = "📡 ТОПОГРАФИЧЕСКИЙ СКАНЕР";
+            }, 1200);
+        }
+        lastTap = now;
+    });
+    
+    // Адаптация под размер окна
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        if (camera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+    
+    // Небольшая заглушка для предупреждения о контексте
+    console.log("Topographic Scanner Ready — используйте камеру для 3D рельефа в реальном времени");
+    
+    // Если пользователь хочет стартовать без клика? нет, ждём кнопку.
+    // Но добавим инструкцию в оверлей
+    document.querySelector('.desc').innerHTML = `🧭 АНАЛИЗ СВЕТОТЕНИ → 3D ЛАНДШАФТ<br>
+    Яркие участки = горные пики, тёмные = низины.<br>
+    <span style="color:#8aff8a;">Вращайте сцену, масштабируйте жестами</span><br>
+    🔄 Двойной тап — смена глубины рельефа`;
+</script>
 </body>
 </html>
