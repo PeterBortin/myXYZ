@@ -3,93 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Luminance 3D Scanner</title>
+    <title>Luminance 3D Scanner & Recorder</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
         body { background: #000; font-family: 'Courier New', monospace; overflow: hidden; color: #0f0; }
         #container { position: relative; width: 100vw; height: 100vh; }
         
-        /* Скрытое видео, используем его как текстуру */
         video { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        
         canvas { position: absolute; top: 0; left: 0; z-index: 2; }
         
         #ui {
             position: absolute; bottom: 30px; width: 100%;
-            display: flex; flex-direction: column; align-items: center;
-            z-index: 10; gap: 10px; pointer-events: none;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10; gap: 15px; pointer-events: none;
         }
 
         .btn {
-            padding: 12px 20px; border-radius: 5px; border: 1px solid #0f0;
-            background: rgba(0, 40, 0, 0.7); color: #0f0; font-weight: bold;
-            pointer-events: auto; text-transform: uppercase; font-size: 11px;
+            padding: 15px 25px; border-radius: 10px; border: 2px solid #0f0;
+            background: rgba(0, 40, 0, 0.8); color: #0f0; font-weight: bold;
+            pointer-events: auto; text-transform: uppercase; font-size: 12px;
+            box-shadow: 0 0 10px rgba(0,255,0,0.3);
         }
+        .btn:active { transform: scale(0.95); background: rgba(0, 255, 0, 0.3); }
+        .btn:disabled { opacity: 0.3; border-color: #888; color: #888; }
+
+        #recBtn { background: rgba(255, 0, 0, 0.2); border-color: #f00; color: #f00; }
+        #recBtn.recording { background: #f00; color: #fff; box-shadow: 0 0 20px #f00; }
 
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; z-index: 100; display: flex; flex-direction: column;
             align-items: center; justify-content: center; text-align: center; padding: 20px;
         }
+
+        #processingLabel {
+            display: none; position: fixed; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); background: rgba(0,0,0,0.8);
+            padding: 20px; border: 1px solid #0f0; z-index: 1000; color: #0f0;
+        }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color: #0f0; margin-bottom: 20px;">LUMINANCE 3D</h1>
+        <h1 style="color: #0f0; margin-bottom: 20px;">LUMINANCE REC</h1>
         <p style="color: #888; margin-bottom: 30px; max-width: 300px;">
-            Создает 3D рельеф из частиц на основе светотени с камеры. <br><br>
-            Вращайте модель одним пальцем, зум — двумя.
+            1. Наведите на объект со светотенью.<br>
+            2. Нажмите SNAP 3D для снимка.<br>
+            3. Нажмите VIEW для осмотра модели.
         </p>
         <button class="btn" onclick="initApp()">Начать</button>
     </div>
 
+    <div id="processingLabel">ОБРАБОТКА 3D...</div>
+
     <div id="container">
         <video id="webcam" autoplay playsinline></video>
         <div id="ui">
-            <button id="resetBtn" class="btn">Сбросить камеру</button>
+            <button id="snapBtn" class="btn">Snap 3D (Снимок)</button>
+            <button id="viewBtn" class="btn" disabled>View (Просмотр)</button>
         </div>
     </div>
 
+    <canvas id="captureCanvas" style="display:none;"></canvas>
+
     <script id="vertexShader" type="x-shader/x-vertex">
-        uniform sampler2D u_tex; // Текстура с камеры
-        uniform float u_depthScale; // Сила выдавливания (Z)
-        varying vec2 v_uv;
+        uniform sampler2D u_tex;
+        uniform float u_depthScale;
         varying float v_brightness;
 
         void main() {
-            v_uv = uv;
-            
-            // Считываем цвет пикселя под этой точкой
             vec4 color = texture2D(u_tex, uv);
-            
-            // Вычисляем яркость по стандарту Luminance
             float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
             v_brightness = brightness;
 
-            // Вычисляем новую позицию. 
-            // Z смещается вперед пропорционально яркости.
             vec3 newPosition = position;
             newPosition.z += brightness * u_depthScale;
 
-            // Проекция точки на экран
             gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
-            
-            // Размер точки (делаем чуть крупнее для видимости)
             gl_PointSize = 3.0; 
         }
     </script>
 
     <script id="fragmentShader" type="x-shader/x-fragment">
         varying float v_brightness;
+        uniform vec3 u_color; // Базовый цвет
 
         void main() {
-            // Рисуем точку как круг, а не квадрат
             if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-            
-            // Красим точку в зеленый, но яркость зависит от Z-смещения
-            vec3 finalColor = vec3(0.0, 1.0, 0.2) * (0.3 + v_brightness * 0.7);
-            
+            vec3 finalColor = u_color * (0.3 + v_brightness * 0.7);
             gl_FragColor = vec4(finalColor, 1.0);
         }
     </script>
@@ -105,13 +107,16 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, camera, renderer, controls, video, videoTexture, material;
+        let scene, camera, renderer, controls, video, videoTexture;
+        let livePointCloud, staticPointCloud;
         
-        // Настройки сетки (оптимизировано для мобильных)
-        // 256x256 = 65,536 точек в реальном времени.
-        const GRID_WIDTH = 256; 
-        const GRID_HEIGHT = 256; 
-        const DEPTH_SCALE = 1.5; // Сила 3D эффекта
+        // Настройки живой сетки (GPU)
+        const LIVE_GRID = 256; 
+        // Настройки записанной сетки (CPU) - меньше, чтобы не зависло
+        const RECORD_GRID = 128; 
+        const DEPTH_SCALE = 1.5;
+
+        let isViewMode = false; // Режим просмотра записи
 
         window.initApp = async () => {
             document.getElementById('overlay').style.display = 'none';
@@ -121,34 +126,21 @@
         function setup() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            // Начальная позиция камеры чуть сбоку, чтобы сразу видеть 3D
-            camera.position.set(1, 1, 3);
+            camera.position.set(0, 0, 3); // Сброс камеры для старта
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Орбитальное управление (пальцами)
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // Плавность вращения
-            controls.target.set(0, 0, DEPTH_SCALE/2); // Фокус на центре рельефа
-
-            // Сетка координат для понимания пространства
-            const gridHelper = new THREE.GridHelper(4, 20, 0x004400, 0x002200);
-            gridHelper.rotation.x = Math.PI / 2; // Кладем сетку горизонтально
-            scene.add(gridHelper);
+            controls.enableDamping = true;
 
             setupCamera().then(() => {
-                createPointCloud();
+                createLivePointCloud();
+                setupUI();
                 animate();
             });
-
-            document.getElementById('resetBtn').onclick = () => {
-                camera.position.set(0, 0, 3);
-                controls.target.set(0, 0, 0);
-            };
         }
 
         async function setupCamera() {
@@ -157,39 +149,157 @@
                 video: { facingMode: "environment", width: 640, height: 480 } 
             });
             video.srcObject = stream;
-
-            // Создаем текстуру Three.js из видеопотока
             videoTexture = new THREE.VideoTexture(video);
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-            videoTexture.format = THREE.RGBAFormat;
         }
 
-        function createPointCloud() {
-            // Создаем плоскость, состоящую из множества вершин
-            const geometry = new THREE.PlaneGeometry(4, 3, GRID_WIDTH - 1, GRID_HEIGHT - 1);
-            
-            // Шейдерный материал (обработка на GPU)
-            material = new THREE.ShaderMaterial({
+        function createLivePointCloud() {
+            const geometry = new THREE.PlaneGeometry(4, 3, LIVE_GRID - 1, LIVE_GRID - 1);
+            const material = new THREE.ShaderMaterial({
                 uniforms: {
                     u_tex: { value: videoTexture },
-                    u_depthScale: { value: DEPTH_SCALE }
+                    u_depthScale: { value: DEPTH_SCALE },
+                    u_color: { value: new THREE.Color(0x00ff33) } // Зеленый для живого
                 },
                 vertexShader: document.getElementById('vertexShader').textContent,
                 fragmentShader: document.getElementById('fragmentShader').textContent,
                 transparent: true,
-                blending: THREE.AdditiveBlending, // Эффект свечения точек
-                depthTest: false // Точки просвечивают друг сквозь друга для объема
+                blending: THREE.AdditiveBlending,
+                depthTest: false
+            });
+            livePointCloud = new THREE.Points(geometry, material);
+            scene.add(livePointCloud);
+        }
+
+        function setupUI() {
+            const snapBtn = document.getElementById('snapBtn');
+            const viewBtn = document.getElementById('viewBtn');
+            const label = document.getElementById('processingLabel');
+
+            // Кнопка СНИМКА (SNAP)
+            snapBtn.onclick = async () => {
+                label.style.display = 'block';
+                snapBtn.disabled = true;
+                
+                // Даем браузеру время отрисовать Label (маленькая задержка)
+                await new Promise(r => setTimeout(r, 50));
+
+                capture3DModel();
+
+                label.style.display = 'none';
+                snapBtn.disabled = false;
+                viewBtn.disabled = false; // Разрешаем просмотр
+                alert("3D Снимок готов! Нажмите VIEW для осмотра.");
+            };
+
+            // Кнопка ПРОСМОТРА (VIEW)
+            viewBtn.onclick = () => {
+                isViewMode = !isViewMode;
+                
+                livePointCloud.visible = !isViewMode;
+                if (staticPointCloud) staticPointCloud.visible = isViewMode;
+
+                viewBtn.innerText = isViewMode ? "Live (Камера)" : "View (Просмотр)";
+                snapBtn.style.display = isViewMode ? "none" : "block";
+                
+                if (isViewMode) {
+                    viewBtn.style.background = "#0f0";
+                    viewBtn.style.color = "#000";
+                    // Разворачиваем камеру для осмотра
+                    camera.position.set(1, 1, 3);
+                    controls.target.set(0, 0, DEPTH_SCALE / 2);
+                } else {
+                    viewBtn.style.background = "";
+                    viewBtn.style.color = "";
+                    // Возвращаем камеру прямо
+                    camera.position.set(0, 0, 3);
+                    controls.target.set(0, 0, 0);
+                }
+            };
+        }
+
+        // --- ГЛАВНАЯ ФУНКЦИЯ ЗАХВАТА МОДЕЛИ НА CPU ---
+        function capture3DModel() {
+            // 1. Подготовка холста для захвата пикселей
+            const canvas = document.getElementById('captureCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = RECORD_GRID;
+            canvas.height = RECORD_GRID;
+
+            // 2. Рисуем текущий кадр видео на холст (масштабируем до RECORD_GRID)
+            ctx.drawImage(video, 0, 0, RECORD_GRID, RECORD_GRID);
+            
+            // 3. Считываем данные пикселей (массив RGBA)
+            const imgData = ctx.getImageData(0, 0, RECORD_GRID, RECORD_GRID).data;
+
+            // 4. Подготовка геометрии для Статичной модели
+            if (staticPointCloud) scene.remove(staticPointCloud);
+            
+            // PlaneGeometry генерирует UV координаты автоматически, что нам нужно
+            const geometry = new THREE.PlaneGeometry(4, 3, RECORD_GRID - 1, RECORD_GRID - 1);
+            const positions = geometry.attributes.position.array;
+            
+            // Добавляем атрибут яркости (varying для шейдера)
+            const brightnesses = new Float32Array(geometry.attributes.position.count);
+
+            // 5. Цикл обработки на CPU: вычисляем Z на основе яркости
+            for (let i = 0; i < geometry.attributes.position.count; i++) {
+                // PlaneGeometry генерирует вершины рядами. Индекс пикселя совпадает с индексом вершины.
+                const r = imgData[i * 4];
+                const g = imgData[i * 4 + 1];
+                const b = imgData[i * 4 + 2];
+
+                // Формула яркости
+                const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+                // Смещаем координату Z реальной вершины
+                // В PlaneGeometry Z идет третьим элементом (i*3 + 2)
+                positions[i * 3 + 2] = luminance * DEPTH_SCALE;
+                
+                // Сохраняем яркость для передачи в шейдер покраски
+                brightnesses[i] = luminance;
+            }
+            
+            geometry.setAttribute('v_brightness', new THREE.BufferAttribute(brightnesses, 1));
+            geometry.attributes.position.needsUpdate = true; // Важно: сообщаем GPU, что данные изменились
+
+            // 6. Материал для Статичной модели (простой шейдер без текстуры)
+            const staticMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    u_color: { value: new THREE.Color(0x3399ff) } // Синий для записи
+                },
+                // Простейший вершинный шейдер: просто передает позицию
+                vertexShader: `
+                    attribute float v_brightness;
+                    varying float v_bright;
+                    void main() {
+                        v_bright = v_brightness;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = 4.0; // Точки записи чуть крупнее
+                    }
+                `,
+                // Фрагментный шейдер: красит на основе переданной яркости
+                fragmentShader: `
+                    varying float v_bright;
+                    uniform vec3 u_color;
+                    void main() {
+                        if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
+                        vec3 finalColor = u_color * (0.3 + v_bright * 0.7);
+                        gl_FragColor = vec4(finalColor, 1.0);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthTest: true // В режиме осмотра тест глубины лучше включить
             });
 
-            // Превращаем плоскость в облако точек
-            const pointCloud = new THREE.Points(geometry, material);
-            scene.add(pointCloud);
+            staticPointCloud = new THREE.Points(geometry, staticMaterial);
+            staticPointCloud.visible = false; // Скрыта по умолчанию
+            scene.add(staticPointCloud);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (controls) controls.update(); // Для плавного затухания OrbitControls
+            if (controls) controls.update();
             renderer.render(scene, camera);
         }
 
