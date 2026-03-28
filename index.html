@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Video Stream Scanner</title>
+    <title>Topo Landscape Scanner</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
         body { background: #000; font-family: 'Courier New', monospace; overflow: hidden; color: #0f0; }
@@ -14,19 +14,18 @@
         #ui {
             position: absolute; bottom: 30px; width: 100%;
             display: flex; justify-content: center; align-items: center;
-            z-index: 10; gap: 10px; padding: 0 10px;
+            z-index: 10; gap: 10px; padding: 0 10px; pointer-events: none;
         }
 
         .btn {
-            padding: 12px 15px; border-radius: 8px; border: 1px solid #0f0;
+            padding: 12px 18px; border-radius: 8px; border: 1px solid #0f0;
             background: rgba(0, 40, 0, 0.8); color: #0f0; font-weight: bold;
-            pointer-events: auto; text-transform: uppercase; font-size: 10px;
+            pointer-events: auto; text-transform: uppercase; font-size: 11px;
+            box-shadow: 0 0 10px rgba(0,255,0,0.2);
         }
 
-        #recBtn { background: rgba(255, 0, 0, 0.2); border-color: #f00; color: #f00; }
-        #recBtn.active { background: #f00; color: #fff; box-shadow: 0 0 15px #f00; animation: blink 1s infinite; }
-
-        @keyframes blink { 50% { opacity: 0.5; } }
+        #snapBtn { background: rgba(0, 255, 0, 0.2); border-color: #0f0; }
+        #resetBtn { border-color: #888; color: #888; }
 
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -34,25 +33,25 @@
             align-items: center; justify-content: center; text-align: center;
         }
 
-        .stats { position: absolute; top: 20px; left: 20px; z-index: 11; font-size: 10px; }
+        .stats { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 11; font-size: 10px; letter-spacing: 2px; }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color: #0f0;">3D STREAM v3.0</h1>
-        <p style="color: #888; margin: 20px;">Зажмите REC и плавно двигайте камерой.<br>Светотень будет "налипать" в пространстве.</p>
-        <button class="btn" onclick="initApp()">Поехали</button>
+        <h1 style="color: #0f0; letter-spacing: 5px;">TOPO SCAN v2.5</h1>
+        <p style="color: #888; margin: 20px; max-width: 280px;">Держите телефон горизонтально над землей. <br><br> Яркие участки станут горами, темные — низинами.</p>
+        <button class="btn" onclick="initApp()">Начать сканирование</button>
     </div>
 
-    <div class="stats" id="info">POINTS: 0 | MODE: LIVE</div>
+    <div class="stats" id="info">LANDSCAPE MODE: ACTIVE</div>
 
     <div id="container">
         <video id="webcam" autoplay playsinline></video>
         <div id="ui">
-            <button id="recBtn" class="btn">REC (Запись)</button>
-            <button id="resetBtn" class="btn">Reset (Сброс)</button>
-            <button id="viewBtn" class="btn">View Mode</button>
+            <button id="snapBtn" class="btn">Захват ландшафта</button>
+            <button id="viewBtn" class="btn">3D Осмотр</button>
+            <button id="resetBtn" class="btn">Сброс</button>
         </div>
     </div>
 
@@ -61,23 +60,33 @@
     <script id="vertexShader" type="x-shader/x-vertex">
         uniform sampler2D u_tex;
         uniform float u_depthScale;
-        varying float v_brightness;
+        varying float v_y; // Используем Y для высоты в ландшафтном режиме
+
         void main() {
             vec4 color = texture2D(u_tex, uv);
-            v_brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+            float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+            
             vec3 pos = position;
-            pos.z += v_brightness * u_depthScale;
+            // В режиме ландшафта "вытягиваем" по оси Y (вверх)
+            pos.y += brightness * u_depthScale;
+            v_y = pos.y;
+
             gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-            gl_PointSize = 2.0;
+            gl_PointSize = 2.5;
         }
     </script>
 
     <script id="fragmentShader" type="x-shader/x-fragment">
-        varying float v_brightness;
-        uniform vec3 u_color;
+        varying float v_y;
         void main() {
             if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-            gl_FragColor = vec4(u_color * (0.4 + v_brightness * 0.6), 1.0);
+            // Цвет зависит от высоты: чем выше, тем белее (как снег на пиках)
+            // Чем ниже, тем зеленее (долины)
+            vec3 lowColor = vec3(0.0, 0.5, 0.1);
+            vec3 highColor = vec3(0.8, 1.0, 0.9);
+            vec3 finalColor = mix(lowColor, highColor, v_y / 1.5);
+            
+            gl_FragColor = vec4(finalColor, 1.0);
         }
     </script>
 
@@ -93,24 +102,21 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         let scene, camera, renderer, controls, video, videoTexture;
-        let liveMesh, recordedMesh;
-        let isRecording = false;
-        let pointIndex = 0;
-        const MAX_POINTS = 150000; // Лимит точек для стабильности
-        const DEPTH_SCALE = 1.2;
+        let liveMesh, staticMesh;
+        const GRID_RES = 160; 
+        const DEPTH_SCALE = 1.8;
 
         window.initApp = async () => {
             document.getElementById('overlay').style.display = 'none';
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                await DeviceOrientationEvent.requestPermission();
-            }
             setup();
         };
 
         function setup() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 3);
+            
+            // Вид сверху под углом (изометрия)
+            camera.position.set(0, 5, 5);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -120,14 +126,12 @@
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
 
-            // Сетка для ориентации
-            const grid = new THREE.GridHelper(10, 20, 0x003300, 0x001100);
-            grid.position.y = -1.5;
-            scene.add(grid);
+            // Сетка основания (как на топографических картах)
+            const gridHelper = new THREE.GridHelper(10, 20, 0x004400, 0x002200);
+            scene.add(gridHelper);
 
             setupCamera().then(() => {
-                createLiveView();
-                createStorage();
+                createLiveLandscape();
                 setupUI();
                 animate();
             });
@@ -136,16 +140,19 @@
         async function setupCamera() {
             video = document.getElementById('webcam');
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 480, height: 360 } 
+                video: { facingMode: "environment", width: 640, height: 480 } 
             });
             video.srcObject = stream;
             videoTexture = new THREE.VideoTexture(video);
         }
 
-        function createLiveView() {
-            const geo = new THREE.PlaneGeometry(3, 2.2, 128, 128);
+        function createLiveLandscape() {
+            // Плоскость лежит на земле (XZ), растет вверх (Y)
+            const geo = new THREE.PlaneGeometry(8, 6, GRID_RES - 1, GRID_RES - 1);
+            geo.rotateX(-Math.PI / 2); // Кладем на пол
+
             const mat = new THREE.ShaderMaterial({
-                uniforms: { u_tex: { value: videoTexture }, u_depthScale: { value: DEPTH_SCALE }, u_color: { value: new THREE.Color(0x00ff00) } },
+                uniforms: { u_tex: { value: videoTexture }, u_depthScale: { value: DEPTH_SCALE } },
                 vertexShader: document.getElementById('vertexShader').textContent,
                 fragmentShader: document.getElementById('fragmentShader').textContent,
                 transparent: true, blending: THREE.AdditiveBlending
@@ -154,96 +161,73 @@
             scene.add(liveMesh);
         }
 
-        function createStorage() {
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
-            geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_POINTS * 3), 3));
-            const mat = new THREE.PointsMaterial({ size: 0.02, vertexColors: true, transparent: true, opacity: 0.7 });
-            recordedMesh = new THREE.Points(geo, mat);
-            scene.add(recordedMesh);
-        }
-
         function setupUI() {
-            const recBtn = document.getElementById('recBtn');
-            const resBtn = document.getElementById('resetBtn');
+            const snapBtn = document.getElementById('snapBtn');
             const viewBtn = document.getElementById('viewBtn');
+            const resBtn = document.getElementById('resetBtn');
 
-            recBtn.ontouchstart = () => { isRecording = true; recBtn.classList.add('active'); };
-            recBtn.ontouchend = () => { isRecording = false; recBtn.classList.remove('active'); };
-
+            // Сброс всего
             resBtn.onclick = () => {
-                // Сброс камеры
-                camera.position.set(0, 0, 3);
+                if (staticMesh) { scene.remove(staticMesh); staticMesh = null; }
+                liveMesh.visible = true;
+                camera.position.set(0, 5, 5);
                 controls.target.set(0, 0, 0);
-                // Очистка точек
-                pointIndex = 0;
-                recordedMesh.geometry.attributes.position.array.fill(0);
-                recordedMesh.geometry.attributes.position.needsUpdate = true;
-                updateStats();
+                viewBtn.innerText = "3D Осмотр";
+                viewBtn.style.background = "";
             };
 
-            let viewMode = false;
+            // Захват кадра (как в версии 2)
+            snapBtn.onclick = () => {
+                captureLandscape();
+                alert("Ландшафт зафиксирован!");
+            };
+
+            // Переключение режимов
             viewBtn.onclick = () => {
-                viewMode = !viewMode;
-                liveMesh.visible = !viewMode;
-                viewBtn.innerText = viewMode ? "Back to Scan" : "View Mode";
-                document.getElementById('info').innerText = viewMode ? "MODE: VIEWING RECORD" : "MODE: LIVE";
+                if (!staticMesh) return alert("Сначала сделайте захват!");
+                liveMesh.visible = !liveMesh.visible;
+                staticMesh.visible = !liveMesh.visible;
+                viewBtn.innerText = liveMesh.visible ? "3D Осмотр" : "Вернуться к камере";
+                viewBtn.style.background = liveMesh.visible ? "" : "#0f0";
+                viewBtn.style.color = liveMesh.visible ? "" : "#000";
             };
         }
 
-        // Каждую секунду в режиме REC мы берем выборку пикселей и "запекаем" их в 3D
-        function recordFrame() {
-            if (!isRecording || pointIndex >= MAX_POINTS) return;
-
+        function captureLandscape() {
             const canvas = document.getElementById('procCanvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 40; canvas.height = 30; // Маленький размер для скорости
-            ctx.drawImage(video, 0, 0, 40, 30);
-            const data = ctx.getImageData(0,0,40,30).data;
+            canvas.width = GRID_RES; canvas.height = GRID_RES;
+            ctx.drawImage(video, 0, 0, GRID_RES, GRID_RES);
+            const data = ctx.getImageData(0,0,GRID_RES,GRID_RES).data;
 
-            const pos = recordedMesh.geometry.attributes.position.array;
-            const col = recordedMesh.geometry.attributes.color.array;
+            if (staticMesh) scene.remove(staticMesh);
 
-            // Матрица трансформации камеры, чтобы точки оставались там, где их "сняли"
-            const camPos = camera.position.clone();
-            const camRot = camera.quaternion.clone();
+            const geo = new THREE.PlaneGeometry(8, 6, GRID_RES - 1, GRID_RES - 1);
+            geo.rotateX(-Math.PI / 2);
+            const pos = geo.attributes.position.array;
+            const colors = new Float32Array(pos.length);
 
-            for(let y=0; y<30; y++) {
-                for(let x=0; x<40; x++) {
-                    const i = (y * 40 + x);
-                    const r = data[i*4]/255, g = data[i*4+1]/255, b = data[i*4+2]/255;
-                    const bright = (0.299*r + 0.587*g + 0.114*b);
+            for (let i = 0; i < geo.attributes.position.count; i++) {
+                const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+                const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+                
+                // Вытягиваем высоту (Y)
+                pos[i * 3 + 1] = lum * DEPTH_SCALE;
 
-                    // Создаем точку относительно камеры
-                    const p = new THREE.Vector3(
-                        (x/40 - 0.5) * 3,
-                        (0.5 - y/30) * 2.2,
-                        bright * DEPTH_SCALE
-                    );
-                    
-                    // Переводим в мировые координаты
-                    p.applyQuaternion(camRot);
-                    p.add(camPos);
-
-                    const idx = (pointIndex % MAX_POINTS) * 3;
-                    pos[idx] = p.x; pos[idx+1] = p.y; pos[idx+2] = p.z;
-                    col[idx] = r; col[idx+1] = g; col[idx+2] = b;
-                    
-                    pointIndex++;
-                }
+                // Цветовая карта высот для статики
+                colors[i*3] = lum * 0.8; 
+                colors[i*3+1] = lum + 0.2; 
+                colors[i*3+2] = lum * 0.5;
             }
-            recordedMesh.geometry.attributes.position.needsUpdate = true;
-            recordedMesh.geometry.attributes.color.needsUpdate = true;
-            updateStats();
-        }
 
-        function updateStats() {
-            document.getElementById('info').innerText = `POINTS: ${pointIndex} | MODE: LIVE`;
+            const mat = new THREE.PointsMaterial({ size: 0.04, vertexColors: true });
+            staticMesh = new THREE.Points(geo, mat);
+            staticMesh.visible = false;
+            scene.add(staticMesh);
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (isRecording) recordFrame();
             controls.update();
             renderer.render(scene, camera);
         }
