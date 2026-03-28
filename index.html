@@ -1,22 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>3D Scanner Prototype</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 3D Scanner Prototype</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
-        #ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); text-align: center; color: #0f0; z-index: 10; }
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4; }
-        canvas { position: absolute; top: 0; left: 0; }
-        button { background: none; border: 1px solid #0f0; color: #0f0; padding: 10px 20px; cursor: pointer; text-transform: uppercase; }
+        /* Оптимизация под мобильные: запрет выделения и скролла */
+        * {
+            margin: 0; padding: 0;
+            box-sizing: border-box;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+
+        body { background: #000; font-family: 'Courier New', monospace; overflow: hidden; color: #0f0; }
+
+        #container { position: relative; width: 100vw; height: 100vh; }
+        
+        video {
+            position: absolute; width: 100%; height: 100%;
+            object-fit: cover; opacity: 0.3; z-index: 1;
+            transform: scaleX(-1); /* Зеркально для удобства */
+        }
+
+        canvas { position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; }
+
+        #ui {
+            position: absolute; bottom: 30px; width: 100%;
+            display: flex; flex-direction: column; align-items: center;
+            z-index: 10; gap: 15px;
+        }
+
+        .stats { background: rgba(0, 40, 0, 0.7); padding: 5px 15px; border-radius: 20px; font-size: 12px; }
+
+        #scanBtn {
+            width: 80px; height: 80px; border-radius: 50%;
+            border: 4px solid #0f0; background: rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 15px #0f0; pointer-events: auto;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #0f0; transition: transform 0.1s;
+        }
+
+        #scanBtn:active { transform: scale(0.9); background: rgba(0, 255, 0, 0.5); }
+
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 100;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        button.start-btn {
+            padding: 15px 40px; background: #0f0; border: none;
+            color: #000; font-weight: bold; border-radius: 5px; cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
-    <video id="webcam" autoplay playsinline></video>
-    <div id="ui">
-        <div id="counter">Points: 0</div>
-        <button id="scanBtn">Сканировать (Зажать)</button>
+    <div id="overlay">
+        <h2 style="margin-bottom: 20px;">3D SCANNER v1.0</h2>
+        <button class="start-btn" onclick="initApp()">START SCANNER</button>
+        <p style="font-size: 10px; margin-top: 15px;">Требуется доступ к камере и гироскопу</p>
     </div>
+
+    <div id="container">
+        <video id="webcam" autoplay playsinline></video>
+        <div id="ui">
+            <div class="stats" id="counter">POINTS: 0</div>
+            <div id="scanBtn">REC</div>
+        </div>
+    </div>
+
+    <!-- Скрытый холст для анализа пикселей (наша "нейросеть") -->
+    <canvas id="analyzer" style="display:none;"></canvas>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -25,78 +83,143 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // 1. Настройка сцены
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // 2. Доступ к камере телефона/ноута
-        const video = document.getElementById('webcam');
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => { video.srcObject = stream; })
-            .catch(err => console.error("Ошибка камеры:", err));
-
-        // 3. Создание облака точек
-        const maxPoints = 10000;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(maxPoints * 3);
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        
-        const material = new THREE.PointsMaterial({ color: 0x00ff00, size: 0.05 });
-        const pointCloud = new THREE.Points(geometry, material);
-        scene.add(pointCloud);
-
-        let pointIndex = 0;
+        let scene, camera, renderer, pointCloud, video, analyzerCtx;
+        let pointsArray = [];
         let isScanning = false;
+        let pointCount = 0;
+        const MAX_POINTS = 50000;
 
-        // 4. Функция добавления точки "взгляда"
-        function addPoint() {
-            if (pointIndex >= maxPoints) return;
+        // 1. Инициализация после клика (iOS требует жест пользователя)
+        window.initApp = async () => {
+            document.getElementById('overlay').style.display = 'none';
+            
+            // Запрос разрешений iOS
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                await DeviceOrientationEvent.requestPermission();
+            }
 
-            // Имитируем глубину (в реальности тут был бы LiDAR или анализ картинки)
-            const distance = 2 + Math.random() * 0.5; 
-            const vector = new THREE.Vector3(0, 0, -distance);
-            vector.applyQuaternion(camera.quaternion); // Точка летит туда, куда смотрит камера
-            vector.add(camera.position);
+            setupThreeJS();
+            setupCamera();
+            setupEvents();
+            animate();
+        };
 
-            const posArray = geometry.attributes.position.array;
-            posArray[pointIndex * 3] = vector.x;
-            posArray[pointIndex * 3 + 1] = vector.y;
-            posArray[pointIndex * 3 + 2] = vector.z;
+        function setupThreeJS() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('container').appendChild(renderer.domElement);
 
-            pointIndex++;
-            geometry.attributes.position.needsUpdate = true;
-            document.getElementById('counter').innerText = `Points: ${pointIndex}`;
+            // Буферная геометрия для облака точек (оптимизировано)
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(MAX_POINTS * 3);
+            const colors = new Float32Array(MAX_POINTS * 3);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({ 
+                size: 0.03, 
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            pointCloud = new THREE.Points(geometry, material);
+            scene.add(pointCloud);
+
+            // Центрируем камеру
+            camera.position.set(0, 0, 0);
         }
 
-        // 5. Управление (Гироскоп для мобилок)
-        window.addEventListener('deviceorientation', (e) => {
-            const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0;
-            const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;
-            const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0;
-            camera.rotation.set(beta, alpha, -gamma, 'YXZ');
-        });
+        async function setupCamera() {
+            video = document.getElementById('webcam');
+            const constraints = {
+                video: { facingMode: "environment", width: 640, height: 480 }
+            };
 
-        // Кнопка скана
-        const btn = document.getElementById('scanBtn');
-        btn.onmousedown = btn.ontouchstart = () => isScanning = true;
-        window.onmouseup = window.ontouchend = () => isScanning = false;
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+
+            // Настройка анализатора пикселей
+            const analyzer = document.getElementById('analyzer');
+            analyzer.width = 64; // Низкое разрешение для скорости анализа
+            analyzer.height = 64;
+            analyzerCtx = analyzer.getContext('2d', { willReadFrequently: true });
+        }
+
+        function setupEvents() {
+            // Гироскоп
+            window.addEventListener('deviceorientation', (e) => {
+                const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0;
+                const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;
+                const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0;
+                
+                // Ориентация для мобильных в портретном режиме
+                camera.rotation.set(beta, alpha, -gamma, 'YXZ');
+            });
+
+            // Управление сканом
+            const btn = document.getElementById('scanBtn');
+            btn.onmousedown = btn.ontouchstart = (e) => { e.preventDefault(); isScanning = true; };
+            window.onmouseup = window.ontouchend = () => { isScanning = false; };
+        }
+
+        function addSmartPoint() {
+            if (pointCount >= MAX_POINTS) return;
+
+            // Анализируем центральную область видео для определения "глубины"
+            analyzerCtx.drawImage(video, 0, 0, 64, 64);
+            const frameData = analyzerCtx.getImageData(30, 30, 4, 4).data;
+            
+            // Имитация AI-дальномера: яркость пикселя влияет на дистанцию
+            const brightness = (frameData[0] + frameData[1] + frameData[2]) / 3;
+            const depth = 1.5 + (brightness / 255) * 1.5; 
+
+            // Переводим локальные координаты "взгляда" в мировые 3D координаты
+            const vector = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2, // Небольшой разброс луча
+                (Math.random() - 0.5) * 0.2, 
+                -depth
+            );
+            vector.applyQuaternion(camera.quaternion);
+            vector.add(camera.position);
+
+            const posAttr = pointCloud.geometry.attributes.position;
+            const colAttr = pointCloud.geometry.attributes.color;
+
+            posAttr.array[pointCount * 3] = vector.x;
+            posAttr.array[pointCount * 3 + 1] = vector.y;
+            posAttr.array[pointCount * 3 + 2] = vector.z;
+
+            // Цвет точки берем из реальности
+            colAttr.array[pointCount * 3] = frameData[0] / 255;
+            colAttr.array[pointCount * 3 + 1] = frameData[1] / 255;
+            colAttr.array[pointCount * 3 + 2] = frameData[2] / 255;
+
+            pointCount++;
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+            
+            document.getElementById('counter').innerText = `POINTS: ${pointCount}`;
+        }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (isScanning) addPoint();
+            if (isScanning) {
+                // За один кадр добавляем 5 точек для плотности
+                for(let i=0; i<5; i++) addSmartPoint();
+            }
             renderer.render(scene, camera);
         }
-        animate();
 
-        // Ресайз
-        window.onresize = () => {
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        };
+        });
     </script>
 </body>
 </html>
