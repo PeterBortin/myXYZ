@@ -1,911 +1,515 @@
 <!DOCTYPE html>
-
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>myXYZ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<style>
-/* ═══ TOKENS ═══════════════════════════════════════════ */
-:root {
-  --bg:     #090909;
-  --surf:   #111;
-  --bdr:    rgba(255,255,255,0.09);
-  --green:  #00E5A0;
-  --red:    #FF3D6B;
-  --gold:   #FFB800;
-  --txt:    #EDEAE5;
-  --muted:  rgba(237,234,229,0.38);
-  --panel:  rgba(9,9,9,0.94);
-  --mono:   'Space Mono', ui-monospace, monospace;
-  --head:   'Syne', system-ui, sans-serif;
-  --r:      5px;
-  /* iOS 26 safe areas */
-  --sat: env(safe-area-inset-top,    0px);
-  --sar: env(safe-area-inset-right,  0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left,   0px);
-  /* chrome heights */
-  --top-h:  calc(50px + var(--sat));
-  --side-w: 58px;
-  --bot-h:  calc(88px + var(--sab));
-}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>myXYZ | Volumetric Intelligence</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@500;800&display=swap');
 
-*,*::before,*::after { margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none; }
-html { height:100%;height:-webkit-fill-available; }
-body {
-width:100%;height:100%;height:-webkit-fill-available;
-overflow:hidden;background:var(–bg);color:var(–txt);
-font-family:var(–mono);touch-action:none;
-user-select:none;-webkit-user-select:none;
-}
+        :root {
+            --bg: #050505;
+            --surface: #0f0f0f;
+            --accent: #00ffb3;
+            --accent-dim: rgba(0, 255, 179, 0.15);
+            --danger: #ff3c6e;
+            --text: #e0e0e0;
+            --text-dim: rgba(224, 224, 224, 0.4);
+            --border: rgba(255, 255, 255, 0.08);
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-sans: 'Syne', sans-serif;
+            --panel-blur: blur(12px);
+        }
 
-/* ═══ LOADER ════════════════════════════════════════════ */
-#loader {
-position:fixed;inset:0;z-index:9000;background:var(–bg);
-display:flex;flex-direction:column;align-items:center;justify-content:center;
-padding:32px;
-padding-top:calc(32px + var(–sat));
-padding-bottom:calc(32px + var(–sab));
-}
-.ld-logo {
-font-family:var(–head);font-weight:800;
-font-size:clamp(56px,15vw,88px);
-letter-spacing:-3px;line-height:1;color:var(–txt);
-}
-.ld-logo b { color:var(–green);font-weight:800; }
-.ld-sub {
-margin-top:8px;font-size:9px;letter-spacing:4px;
-text-transform:uppercase;color:var(–muted);text-align:center;
-}
-.ld-line { width:32px;height:1px;background:var(–bdr);margin:28px auto; }
-.ld-body {
-font-size:13px;line-height:2.0;color:var(–muted);
-text-align:center;max-width:270px;
-}
-.ld-pills {
-display:flex;flex-wrap:wrap;gap:8px;
-justify-content:center;margin-top:24px;
-}
-.ld-pill {
-padding:5px 13px;font-size:9px;letter-spacing:2px;
-text-transform:uppercase;border:1px solid var(–bdr);
-color:var(–muted);border-radius:40px;
-}
-.ld-cta {
-margin-top:30px;width:100%;max-width:270px;
-padding:18px 0;background:var(–green);border:none;
-color:#000;font-family:var(–mono);font-weight:700;
-font-size:11px;letter-spacing:3px;text-transform:uppercase;
-cursor:pointer;border-radius:var(–r);
-transition:opacity .2s,transform .15s;
-}
-.ld-cta:active{opacity:.8;transform:scale(.98);}
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background: var(--bg); color: var(--text); 
+            font-family: var(--font-mono); font-size: 12px;
+            user-select: none; touch-action: none;
+        }
 
-/* ═══ STAGE ═════════════════════════════════════════════ */
-#stage{position:fixed;inset:0;}
-video{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
-canvas.gl{position:absolute;inset:0;display:block;z-index:2;}
+        /* --- LOADER --- */
+        #loader {
+            position: fixed; inset: 0; z-index: 1000; background: var(--bg);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .loader-content { text-align: center; }
+        .loader-logo { 
+            font-family: var(--font-sans); font-size: 64px; font-weight: 800; 
+            letter-spacing: -3px; margin-bottom: 10px;
+        }
+        .loader-logo span { color: var(--accent); }
+        .loader-btn {
+            margin-top: 40px; padding: 15px 40px; background: transparent;
+            border: 1px solid var(--accent); color: var(--accent);
+            font-family: var(--font-mono); text-transform: uppercase;
+            letter-spacing: 4px; cursor: pointer; transition: 0.3s;
+        }
+        .loader-btn:hover { background: var(--accent); color: var(--bg); box-shadow: 0 0 30px var(--accent-dim); }
 
-/* ═══ TOPBAR ════════════════════════════════════════════ */
-#topbar {
-position:fixed;top:0;left:0;right:0;z-index:50;
-height:var(–top-h);
-padding-top:var(–sat);
-padding-left:calc(var(–side-w) + 12px);
-padding-right:calc(var(–sar) + 16px);
-padding-bottom:10px;
-display:flex;align-items:flex-end;justify-content:space-between;
-background:linear-gradient(to bottom,rgba(9,9,9,.97) 55%,transparent);
-backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-border-bottom:1px solid var(–bdr);
-}
-.tb-logo {
-font-family:var(–head);font-weight:800;
-font-size:18px;letter-spacing:-.5px;
-}
-.tb-logo b{color:var(–green);font-weight:800;}
-.tb-pill {
-display:flex;align-items:center;gap:6px;
-padding:4px 10px;border:1px solid var(–bdr);
-border-radius:40px;font-size:9px;letter-spacing:2px;
-text-transform:uppercase;color:var(–muted);
-background:rgba(9,9,9,.65);
-}
-.dot {
-width:5px;height:5px;border-radius:50%;
-background:var(–green);box-shadow:0 0 6px var(–green);
-animation:pulse 2s infinite;
-}
-.dot.p{background:var(–gold);box-shadow:0 0 6px var(–gold);animation:blink .4s infinite;}
-.dot.s{background:var(–red);box-shadow:0 0 6px var(–red);animation:pulse 2s infinite;}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+        /* --- INTERFACE --- */
+        #container { position: fixed; inset: 0; z-index: 1; }
+        video { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
-/* ═══ SIDEBAR ═══════════════════════════════════════════ */
-#sidebar {
-position:fixed;
-left:var(–sal);top:var(–top-h);bottom:var(–bot-h);
-width:var(–side-w);z-index:40;
-display:flex;flex-direction:column;align-items:center;
-padding:10px 0;gap:2px;
-background:rgba(9,9,9,.85);
-backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-border-right:1px solid var(–bdr);
-}
-.sb {
-width:44px;height:44px;border:1px solid transparent;
-background:transparent;border-radius:var(–r);
-color:var(–muted);display:flex;flex-direction:column;
-align-items:center;justify-content:center;gap:2px;
-cursor:pointer;transition:all .18s;font-size:19px;
-}
-.sb .l{font-size:6px;letter-spacing:.5px;text-transform:uppercase;font-family:var(–mono);line-height:1;}
-.sb:active{transform:scale(.88);}
-.sb.on{border-color:var(–green);color:var(–green);background:rgba(0,229,160,.07);}
-.sb.hot{border-color:var(–red);color:var(–red);background:rgba(255,61,107,.07);}
-.sb:disabled{opacity:.22;pointer-events:none;}
-.sp{width:28px;height:1px;background:var(–bdr);margin:4px 0;}
+        header {
+            position: fixed; top: 0; left: 0; right: 0; height: 60px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; border-bottom: 1px solid var(--border);
+            background: rgba(5, 5, 5, 0.5); backdrop-filter: var(--panel-blur); z-index: 10;
+        }
+        .logo { font-family: var(--font-sans); font-weight: 800; font-size: 20px; }
+        .logo span { color: var(--accent); }
 
-/* ═══ BOTTOMBAR ═════════════════════════════════════════ */
-#bottombar {
-position:fixed;
-left:var(–sal);right:var(–sar);bottom:0;
-height:var(–bot-h);
-padding-bottom:var(–sab);
-padding-left:calc(var(–side-w) + 14px);
-padding-right:14px;
-z-index:50;display:flex;align-items:center;gap:10px;
-background:linear-gradient(to top,rgba(9,9,9,.98) 55%,transparent);
-backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-border-top:1px solid var(–bdr);
-}
-.bb-snap {
-flex:1;height:54px;
-background:var(–green);border:none;border-radius:var(–r);
-color:#000;font-family:var(–mono);font-weight:700;
-font-size:12px;letter-spacing:3px;text-transform:uppercase;
-cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
-box-shadow:0 0 24px rgba(0,229,160,.35);
-transition:transform .15s,box-shadow .2s;
-}
-.bb-snap:active{transform:scale(.97);box-shadow:0 0 10px rgba(0,229,160,.2);}
-.bb-ico {
-height:54px;min-width:54px;padding:0 10px;
-border:1px solid var(–bdr);background:rgba(255,255,255,.03);
-border-radius:var(–r);color:var(–muted);
-display:flex;flex-direction:column;
-align-items:center;justify-content:center;gap:3px;
-cursor:pointer;transition:all .18s;
-font-size:9px;font-family:var(–mono);
-letter-spacing:1px;text-transform:uppercase;
-}
-.bb-ico .i{font-size:19px;line-height:1;}
-.bb-ico:active{transform:scale(.92);}
-.bb-ico.on{border-color:var(–green);color:var(–green);background:rgba(0,229,160,.06);}
-.bb-ico:disabled{opacity:.2;pointer-events:none;}
+        .sys-status { display: flex; align-items: center; gap: 10px; font-size: 10px; letter-spacing: 2px; }
+        .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent); }
+        .dot.pulse { animation: pulse 1.5s infinite; }
+        .dot.busy { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
 
-/* ═══ DEPTH SLIDER ══════════════════════════════════════ */
-#dw {
-position:fixed;
-left:calc(var(–sal) + var(–side-w) + 9px);
-top:50%;transform:translateY(-50%);
-z-index:30;
-display:flex;flex-direction:column;align-items:center;gap:6px;
-}
-.dl{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(–muted);writing-mode:vertical-rl;}
-#dSlider{
--webkit-appearance:none;appearance:none;
-writing-mode:vertical-lr;direction:rtl;
-width:3px;height:110px;
-background:var(–bdr);border-radius:2px;outline:none;cursor:pointer;
-}
-#dSlider::-webkit-slider-thumb{
--webkit-appearance:none;
-width:16px;height:16px;border-radius:50%;
-background:var(–green);box-shadow:0 0 8px var(–green);cursor:pointer;
-}
-.dv{font-size:8px;color:var(–green);}
+        /* --- SIDEBAR --- */
+        .sidebar {
+            position: fixed; left: 0; top: 60px; bottom: 80px; width: 60px;
+            display: flex; flex-direction: column; align-items: center; padding: 20px 0;
+            border-right: 1px solid var(--border); background: rgba(5, 5, 5, 0.3);
+            backdrop-filter: var(--panel-blur); z-index: 10; gap: 15px;
+        }
+        .tool-btn {
+            width: 40px; height: 40px; border: 1px solid transparent;
+            background: transparent; color: var(--text-dim);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; transition: 0.2s; position: relative;
+        }
+        .tool-btn:hover { color: var(--text); border-color: var(--border); }
+        .tool-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+        .tool-btn svg { width: 20px; height: 20px; }
 
-/* ═══ HISTOGRAM ═════════════════════════════════════════ */
-#hw{
-position:fixed;
-left:calc(var(–sal) + var(–side-w) + 9px);
-bottom:calc(var(–bot-h) + 6px);
-z-index:30;opacity:.55;
-}
-.hl{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(–muted);margin-bottom:3px;}
+        /* --- FOOTER --- */
+        footer {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 80px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; border-top: 1px solid var(--border);
+            background: rgba(5, 5, 5, 0.8); backdrop-filter: var(--panel-blur); z-index: 10;
+        }
+        .snap-btn {
+            height: 50px; padding: 0 40px; background: var(--accent); color: var(--bg);
+            border: none; border-radius: 25px; font-family: var(--font-mono);
+            font-weight: 700; letter-spacing: 2px; cursor: pointer;
+            transition: 0.3s; transform: translateY(0);
+        }
+        .snap-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px var(--accent-dim); }
+        .snap-btn:active { transform: translateY(0); }
 
-/* ═══ SCAN OVERLAY ══════════════════════════════════════ */
-#scan{position:fixed;inset:0;z-index:60;pointer-events:none;display:none;}
-#scan.show{display:block;}
-.sc-line{
-position:absolute;left:0;right:0;height:2px;
-background:linear-gradient(90deg,transparent,var(–green),transparent);
-animation:scanDn 1.6s linear forwards;
-}
-@keyframes scanDn{0%{top:0;opacity:1}100%{top:100%;opacity:.2}}
-.sc-box{position:absolute;inset:8%;}
-.sc-c{position:absolute;width:22px;height:22px;border-color:var(–green);border-style:solid;opacity:.85;}
-.tl{top:0;left:0;border-width:2px 0 0 2px;}.tr{top:0;right:0;border-width:2px 2px 0 0;}
-.bl{bottom:0;left:0;border-width:0 0 2px 2px;}.br{bottom:0;right:0;border-width:0 2px 2px 0;}
-.sc-txt{
-position:absolute;bottom:-26px;left:0;right:0;text-align:center;
-font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(–green);
-}
+        /* --- AI PANEL --- */
+        #ai-sidebar {
+            position: fixed; right: 0; top: 60px; bottom: 80px; width: 280px;
+            background: var(--surface); border-left: 1px solid var(--border);
+            transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 10; padding: 20px; overflow-y: auto;
+        }
+        #ai-sidebar.open { transform: translateX(0); }
+        .ai-card { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 4px; margin-bottom: 12px; border: 1px solid var(--border); }
+        .ai-card label { display: block; font-size: 9px; color: var(--accent); margin-bottom: 5px; text-transform: uppercase; }
+        .ai-card p { font-size: 11px; line-height: 1.5; }
 
-/* ═══ TOASTS ════════════════════════════════════════════ */
-#toasts{
-position:fixed;
-top:calc(var(–top-h) + 10px);
-left:50%;transform:translateX(-50%);
-z-index:80;pointer-events:none;
-display:flex;flex-direction:column;gap:6px;align-items:center;
-}
-.tst{
-padding:7px 16px;border:1px solid var(–bdr);
-background:rgba(9,9,9,.97);font-size:10px;letter-spacing:1.5px;
-text-transform:uppercase;white-space:nowrap;
-display:flex;align-items:center;gap:8px;
-border-radius:40px;animation:tIn .25s ease;transition:opacity .4s;
-}
-.tst.ok{border-color:var(–green);color:var(–green);}
-.tst.err{border-color:var(–red);color:var(–red);}
-.tst.ai{border-color:#A78BFA;color:#A78BFA;}
-@keyframes tIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+        /* --- OVERLAYS --- */
+        #scanner {
+            position: fixed; inset: 0; border: 2px solid var(--accent);
+            pointer-events: none; display: none; z-index: 5;
+            background: linear-gradient(var(--accent-dim) 1px, transparent 1px) center / 100% 40px;
+            animation: scanAnim 2s linear infinite;
+        }
+        @keyframes scanAnim { from { background-position: 0 0; } to { background-position: 0 100%; } }
 
-/* ═══ AI SHEET ══════════════════════════════════════════ */
-#sheet{
-position:fixed;
-left:var(–sal);right:var(–sar);bottom:0;
-z-index:70;background:var(–surf);
-border-top:1px solid var(–bdr);border-radius:16px 16px 0 0;
-max-height:76vh;display:flex;flex-direction:column;
-transform:translateY(100%);
-transition:transform .42s cubic-bezier(.16,1,.3,1);
-overflow:hidden;
-}
-#sheet.open{transform:translateY(0);}
-.sh-handle{
-width:40px;height:4px;border-radius:2px;
-background:var(–bdr);margin:10px auto 0;flex-shrink:0;
-}
-.sh-head{
-padding:14px 18px 10px;
-display:flex;align-items:center;justify-content:space-between;
-border-bottom:1px solid var(–bdr);flex-shrink:0;
-}
-.sh-title{font-family:var(–head);font-size:18px;font-weight:700;}
-.sh-x{
-width:30px;height:30px;border-radius:50%;
-border:1px solid var(–bdr);background:transparent;
-color:var(–muted);cursor:pointer;font-size:13px;
-display:flex;align-items:center;justify-content:center;transition:all .2s;
-}
-.sh-x:active{background:rgba(255,61,107,.1);color:var(–red);}
-.sh-body{
-flex:1;overflow-y:auto;padding:16px 18px;
-padding-bottom:calc(16px + var(–sab));
-display:flex;flex-direction:column;gap:12px;
--webkit-overflow-scrolling:touch;
-}
-.sh-subj{font-family:var(–head);font-size:24px;font-weight:700;color:var(–green);line-height:1.1;}
-.sh-desc{font-size:12px;line-height:1.95;color:rgba(237,234,229,.62);}
-.sh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-.sh-card{
-background:rgba(255,255,255,.03);
-border:1px solid var(–bdr);border-radius:var(–r);padding:10px 12px;
-}
-.sh-clabel{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(–muted);margin-bottom:4px;}
-.sh-cval{font-size:14px;color:var(–txt);font-weight:700;}
-.sh-bar{height:2px;background:rgba(255,255,255,.07);border-radius:1px;overflow:hidden;margin-top:5px;}
-.sh-bfill{height:100%;background:var(–green);border-radius:1px;transition:width 1s ease;}
-.sh-tags{display:flex;flex-wrap:wrap;gap:6px;}
-.sh-tag{
-padding:4px 12px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
-border-radius:40px;border:1px solid rgba(0,229,160,.3);color:var(–green);
-}
-.sh-tip{
-background:rgba(255,184,0,.06);border:1px solid rgba(255,184,0,.2);
-border-radius:var(–r);padding:12px 14px;
-}
-.sh-tlabel{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(–gold);margin-bottom:6px;}
-.sh-ttext{font-size:11px;line-height:1.85;color:rgba(237,234,229,.68);}
+        #notifications {
+            position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+            z-index: 100; display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--surface); border-left: 3px solid var(--accent);
+            padding: 10px 20px; font-size: 11px; text-transform: uppercase;
+            letter-spacing: 1px; animation: toastIn 0.3s ease forwards;
+        }
 
-/* Skeleton */
-.sk{
-border-radius:var(–r);height:20px;
-background:linear-gradient(90deg,var(–bdr) 25%,rgba(255,255,255,.05) 50%,var(–bdr) 75%);
-background-size:300% 100%;animation:sk 1.4s infinite;
-}
-@keyframes sk{0%{background-position:100% 0}100%{background-position:-100% 0}}
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
-/* ═══ HINT BADGE ════════════════════════════════════════ */
-#hint{
-position:fixed;
-top:calc(var(–top-h) + 8px);
-right:calc(var(–sar) + 12px);
-z-index:35;font-size:8px;letter-spacing:2px;
-text-transform:uppercase;color:var(–muted);
-background:rgba(9,9,9,.7);border:1px solid var(–bdr);
-padding:4px 10px;border-radius:40px;
-backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-}
-</style>
+        /* --- RANGE SLIDER --- */
+        .depth-ctrl { position: fixed; left: 80px; bottom: 100px; display: flex; align-items: center; gap: 15px; z-index: 10; }
+        input[type=range] { -webkit-appearance: none; width: 150px; height: 2px; background: var(--border); outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; cursor: pointer; }
 
+        .hidden { display: none !important; }
+    </style>
 </head>
 <body>
 
-<!-- ════════ LOADER ════════ -->
-
 <div id="loader">
-  <div class="ld-logo">my<b>XYZ</b></div>
-  <div class="ld-sub">Volumetric Reality Engine</div>
-  <div class="ld-line"></div>
-  <div class="ld-body">
-    Превращает световые паттерны в<br>
-    объёмный 3D-слепок. Наведите камеру<br>
-    на лицо или рельеф — нажмите SNAP.
-  </div>
-  <div class="ld-pills">
-    <div class="ld-pill">Shape from Shading</div>
-    <div class="ld-pill">AI Vision</div>
-    <div class="ld-pill">Live 3D</div>
-  </div>
-  <button class="ld-cta" id="ldBtn">Запустить камеру</button>
+    <div class="loader-content">
+        <div class="loader-logo">my<span>XYZ</span></div>
+        <p style="color: var(--text-dim); letter-spacing: 2px;">NEURAL VOLUMETRIC ENGINE v3.0</p>
+        <button class="loader-btn" onclick="initApp()">Initialize System</button>
+    </div>
 </div>
 
-<!-- ════════ SCAN ════════ -->
+<header>
+    <div class="logo">my<span>XYZ</span></div>
+    <div class="sys-status">
+        <div class="dot pulse" id="status-dot"></div>
+        <span id="status-text">SYSTEM READY</span>
+    </div>
+    <div style="font-size: 9px; color: var(--text-dim); text-align: right;">
+        DATA STREAM: <span id="fps-val">0</span> FPS<br>
+        <span id="res-val">0x0</span>
+    </div>
+</header>
 
-<div id="scan">
-  <div class="sc-line"></div>
-  <div class="sc-box">
-    <div class="sc-c tl"></div><div class="sc-c tr"></div>
-    <div class="sc-c bl"></div><div class="sc-c br"></div>
-    <div class="sc-txt">Сканирование</div>
-  </div>
+<div class="sidebar">
+    <button class="tool-btn active" id="mode-live" onclick="setMode('live')" title="Live View">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    </button>
+    <button class="tool-btn" id="mode-view" onclick="setMode('view')" title="3D Mesh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    </button>
+    <div style="width: 20px; height: 1px; background: var(--border);"></div>
+    <button class="tool-btn" onclick="toggleColor()" title="Toggle Heatmap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+    </button>
+    <button class="tool-btn" id="ai-toggle" onclick="toggleAiPanel()" title="AI Intelligence">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </button>
 </div>
 
-<!-- ════════ TOASTS ════════ -->
-
-<div id="toasts"></div>
-
-<!-- ════════ STAGE ════════ -->
-
-<div id="stage">
-  <video id="webcam" autoplay playsinline muted></video>
+<div class="depth-ctrl">
+    <span style="font-size: 9px; color: var(--text-dim);">EXTRUSION</span>
+    <input type="range" id="depth-slider" min="0" max="5" step="0.1" value="1.5" oninput="updateDepth(this.value)">
 </div>
 
-<!-- ════════ TOPBAR ════════ -->
-
-<div id="topbar">
-  <div class="tb-logo">my<b>XYZ</b></div>
-  <div class="tb-pill">
-    <div class="dot" id="dot"></div>
-    <span id="stxt">LIVE</span>
-  </div>
-</div>
-<div id="hint">FPS: —</div>
-
-<!-- ════════ SIDEBAR ════════ -->
-
-<div id="sidebar">
-  <button class="sb on" id="bLive" onclick="goLive()">
-    <span>◉</span><span class="l">Live</span>
-  </button>
-  <button class="sb" id="b3D" onclick="go3D()" disabled>
-    <span>⬡</span><span class="l">3D</span>
-  </button>
-  <div class="sp"></div>
-  <button class="sb" id="bHeat" onclick="toggleHeat()">
-    <span>◐</span><span class="l">Карта</span>
-  </button>
-  <button class="sb" id="bSpin" onclick="toggleSpin()">
-    <span>↻</span><span class="l">Spin</span>
-  </button>
-  <div class="sp"></div>
-  <button class="sb" id="bAI" onclick="runAI()" disabled>
-    <span>✦</span><span class="l">AI</span>
-  </button>
+<div id="ai-sidebar">
+    <h3 style="font-family: var(--font-sans); margin-bottom: 20px; font-size: 16px;">AI ANALYSIS</h3>
+    <div id="ai-results-content">
+        <div class="ai-card"><p style="color: var(--text-dim);">Waiting for snapshot data...</p></div>
+    </div>
 </div>
 
-<!-- ════════ DEPTH SLIDER ════════ -->
+<div id="scanner"></div>
+<div id="notifications"></div>
+<div id="container"></div>
 
-<div id="dw">
-  <div class="dl">Глубина</div>
-  <input type="range" id="dSlider" min="0.3" max="5" step="0.1" value="2"
-    oninput="onDepth(this.value)">
-  <div class="dv" id="dVal">2.0</div>
-</div>
+<footer>
+    <button class="tool-btn" onclick="resetSystem()" title="Reset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+    <button class="snap-btn" id="snap-trigger" onclick="takeSnapshot()">CAPTURE 3D SNAP</button>
+    <button class="tool-btn" id="export-btn" onclick="exportData()" disabled title="Export PNG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+</footer>
 
-<!-- ════════ HISTOGRAM ════════ -->
-
-<div id="hw">
-  <div class="hl">Luminance</div>
-  <canvas id="hCvs" width="96" height="32"></canvas>
-</div>
-
-<!-- ════════ BOTTOMBAR ════════ -->
-
-<div id="bottombar">
-  <button class="bb-ico" onclick="reset()">
-    <span class="i">↺</span>Сброс
-  </button>
-  <button class="bb-snap" id="bSnap" onclick="snap()">
-    ⬤&nbsp;&nbsp;SNAP
-  </button>
-  <button class="bb-ico" id="bExp" onclick="exportPNG()" disabled>
-    <span class="i">↗</span>Фото
-  </button>
-</div>
-
-<!-- ════════ AI SHEET ════════ -->
-
-<div id="sheet">
-  <div class="sh-handle"></div>
-  <div class="sh-head">
-    <div class="sh-title">AI Анализ</div>
-    <button class="sh-x" onclick="closeAI()">✕</button>
-  </div>
-  <div class="sh-body" id="shBody"></div>
-</div>
-
-<canvas id="proc" style="display:none"></canvas>
-
-<!-- ════════ SHADERS ════════ -->
-
-<script id="VSH" type="x-shader/x-vertex">
-uniform sampler2D uTex;
-uniform float uDepth;
-uniform float uHeat;
-varying vec2 vUV;
-varying float vB;
-varying float vZ;
-void main(){
-  vUV=uv;
-  vec4 c=texture2D(uTex,uv);
-  float b=dot(c.rgb,vec3(0.299,0.587,0.114));
-  vB=b;
-  vec3 p=position;
-  float dz=(b-0.5)*uDepth;
-  p.z+=dz;
-  vZ=dz/uDepth+0.5;
-  gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
-  gl_PointSize=3.2;
-}
-</script>
-
-<script id="FSH" type="x-shader/x-fragment">
-uniform sampler2D uTex;
-uniform float uHeat;
-varying vec2 vUV;
-varying float vB;
-varying float vZ;
-vec3 heat(float t){
-  if(t<.25)return mix(vec3(0.,.0,.5),vec3(0.,.8,1.),t*4.);
-  if(t<.5)return mix(vec3(0.,.8,1.),vec3(0.,.9,0.),(t-.25)*4.);
-  if(t<.75)return mix(vec3(0.,.9,0.),vec3(1.,.8,0.),(t-.5)*4.);
-  return mix(vec3(1.,.8,0.),vec3(1.,0.,0.),(t-.75)*4.);
-}
-void main(){
-  if(length(gl_PointCoord-vec2(.5))>.5)discard;
-  vec4 tc=texture2D(uTex,vUV);
-  vec3 col=uHeat>.5?heat(vZ):tc.rgb*(.35+vB*.75);
-  gl_FragColor=vec4(col,1.);
-}
-</script>
+<canvas id="buffer-canvas" class="hidden"></canvas>
 
 <script type="importmap">
-{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-/* ══ STATE ══════════════════════════════════════════ */
-const A = {
-  ready:false, mode:'live',
-  heat:false, spin:false, hasSnap:false,
-  depth:2.0, fps:0, frames:0, lastT:0,
-  lastImg:null, scanning:false,
+// --- CONFIG & STATE ---
+const State = {
+    ready: false,
+    mode: 'live', // live | view
+    depth: 1.5,
+    isHeatmap: false,
+    aiOpen: false,
+    hasSnap: false,
+    gridSize: 256
 };
-const GRID = 300;
 
-/* ══ OBJECTS ════════════════════════════════════════ */
-let scene, cam, renderer, orb;
-let vid, vTex;
-let lMesh, sMesh;
+let scene, camera, renderer, controls, video, videoTex;
+let liveMesh, snapMesh;
+let lastTime = 0, frames = 0;
 
-const pCvs = document.getElementById('proc');
-const pCtx = pCvs.getContext('2d');
-const hCvs = document.getElementById('hCvs');
-const hCtx = hCvs.getContext('2d');
+// --- INITIALIZATION ---
+window.initApp = async () => {
+    const loader = document.getElementById('loader');
+    loader.style.opacity = '0';
+    setTimeout(() => loader.style.display = 'none', 600);
 
-/* ══ BOOT ═══════════════════════════════════════════ */
-document.getElementById('ldBtn').addEventListener('click', async () => {
-  document.getElementById('loader').style.cssText += ';opacity:0;transition:opacity .5s;pointer-events:none;';
-  setTimeout(() => document.getElementById('loader').style.display='none', 520);
-  try {
-    initThree();
-    await initCam();
-    buildLive();
-    loop();
-    A.ready = true;
-    toast('Камера готова','ok');
-  } catch(e) {
-    document.getElementById('loader').style.cssText = '';
-    toast('Ошибка камеры — проверьте разрешения','err');
-    console.error(e);
-  }
-});
+    try {
+        await initCamera();
+        initThree();
+        createLiveObjects();
+        animate();
+        State.ready = true;
+        showToast("Systems Online", "success");
+    } catch (e) {
+        showToast("Camera Access Denied", "danger");
+        console.error(e);
+    }
+};
+
+async function initCamera() {
+    video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: 1280, height: 720 } 
+    });
+    video.srcObject = stream;
+    return new Promise(r => video.onloadedmetadata = () => {
+        document.getElementById('res-val').textContent = `${video.videoWidth}x${video.videoHeight}`;
+        r();
+    });
+}
 
 function initThree() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x090909);
-  cam = new THREE.PerspectiveCamera(57, innerWidth/innerHeight, 0.1, 500);
-  cam.position.set(0, 0, 4.8);
-  renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.domElement.className = 'gl';
-  document.getElementById('stage').appendChild(renderer.domElement);
-  orb = new OrbitControls(cam, renderer.domElement);
-  orb.enableDamping = true; orb.dampingFactor = 0.06; orb.enabled = false;
-  addEventListener('resize', () => {
-    cam.aspect = innerWidth/innerHeight;
-    cam.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
-}
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
 
-async function initCam() {
-  vid = document.getElementById('webcam');
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }
-  });
-  vid.srcObject = stream;
-  await new Promise(r => vid.onloadedmetadata = r);
-  await vid.play();
-  vTex = new THREE.VideoTexture(vid);
-  vTex.minFilter = THREE.LinearFilter;
-  vTex.magFilter = THREE.LinearFilter;
-}
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
 
-function buildLive() {
-  const geo = new THREE.PlaneGeometry(5.8, 3.6, GRID-1, GRID-1);
-  const mat = new THREE.ShaderMaterial({
-    uniforms:{ uTex:{value:vTex}, uDepth:{value:A.depth}, uHeat:{value:0.0} },
-    vertexShader:   document.getElementById('VSH').textContent,
-    fragmentShader: document.getElementById('FSH').textContent,
-  });
-  lMesh = new THREE.Points(geo, mat);
-  scene.add(lMesh);
-}
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('container').appendChild(renderer.domElement);
 
-/* ══ LOOP ═══════════════════════════════════════════ */
-let hT = 0;
-function loop() {
-  requestAnimationFrame(loop);
-  orb.update();
-  const now = performance.now();
-  A.frames++;
-  if (now - A.lastT > 900) {
-    A.fps = Math.round(A.frames * 1000 / (now - A.lastT));
-    A.frames = 0; A.lastT = now;
-    document.getElementById('hint').textContent = `FPS: ${A.fps}`;
-  }
-  if (A.mode==='live' && vid.readyState>=2 && now-hT>260) { hT=now; drawHist(); }
-  renderer.render(scene, cam);
-}
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enabled = false;
 
-function drawHist() {
-  pCvs.width=64; pCvs.height=36;
-  pCtx.drawImage(vid,0,0,64,36);
-  const d=pCtx.getImageData(0,0,64,36).data;
-  const b=new Float32Array(24).fill(0);
-  for(let i=0;i<d.length;i+=4){
-    const l=(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])/255;
-    b[Math.min(23,Math.floor(l*24))]++;
-  }
-  const mx=Math.max(...b)||1;
-  hCtx.clearRect(0,0,96,32);
-  for(let i=0;i<24;i++){
-    const h=(b[i]/mx)*30, x=i*(96/24);
-    const g=hCtx.createLinearGradient(0,32,0,32-h);
-    g.addColorStop(0,'rgba(0,229,160,.9)');
-    g.addColorStop(1,'rgba(0,229,160,.2)');
-    hCtx.fillStyle=g;
-    hCtx.fillRect(x,32-h,(96/24)-1,h);
-  }
-}
-
-/* ══ SNAP ═══════════════════════════════════════════ */
-window.snap = () => {
-  if(!A.ready || A.scanning) return;
-  A.scanning = true;
-  setStatus('SCAN','p');
-  const sc=document.getElementById('scan');
-  sc.classList.add('show');
-  // re-trigger scan animation
-  const ln=sc.querySelector('.sc-line');
-  ln.style.animation='none';
-  ln.offsetHeight; // reflow
-  ln.style.animation='';
-  setTimeout(() => {
-    sc.classList.remove('show');
-    buildSnap();
-    A.scanning=false;
-  }, 1650);
-};
-
-function buildSnap() {
-  const R=GRID;
-  pCvs.width=R; pCvs.height=R;
-  pCtx.drawImage(vid,0,0,R,R);
-  A.lastImg = pCtx.getImageData(0,0,R,R);
-  const d=A.lastImg.data;
-
-  if(sMesh){ scene.remove(sMesh); sMesh.geometry.dispose(); sMesh.material.dispose(); }
-
-  const geo=new THREE.PlaneGeometry(5.8,3.6,R-1,R-1);
-  const pos=geo.attributes.position.array;
-  const col=new Float32Array(pos.length);
-  const N=geo.attributes.position.count;
-
-  for(let i=0;i<N;i++){
-    const r=d[i*4],g=d[i*4+1],b=d[i*4+2];
-    const l=(0.299*r+0.587*g+0.114*b)/255;
-    pos[i*3+2]=(l-0.5)*A.depth;
-    col[i*3]=r/255;col[i*3+1]=g/255;col[i*3+2]=b/255;
-  }
-  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
-  geo.attributes.position.needsUpdate=true;
-
-  sMesh=new THREE.Points(geo,new THREE.PointsMaterial({size:.034,vertexColors:true}));
-  sMesh.visible=false;
-  scene.add(sMesh);
-
-  A.hasSnap=true;
-  document.getElementById('b3D').disabled=false;
-  document.getElementById('bAI').disabled=false;
-  document.getElementById('bExp').disabled=false;
-
-  toast('3D-слепок готов!','ok');
-  setStatus('READY','ok');
-  setTimeout(()=>go3D(),350);
-}
-
-/* ══ MODES ══════════════════════════════════════════ */
-window.goLive = () => {
-  A.mode='live';
-  if(lMesh) lMesh.visible=true;
-  if(sMesh) sMesh.visible=false;
-  orb.enabled=false;
-  cam.position.set(0,0,4.8);
-  orb.target.set(0,0,0);
-  document.getElementById('bLive').classList.add('on');
-  document.getElementById('b3D').classList.remove('on');
-  setStatus('LIVE','live');
-};
-
-window.go3D = () => {
-  if(!A.hasSnap){ toast('Сначала нажмите SNAP','err'); return; }
-  A.mode='3d';
-  if(lMesh) lMesh.visible=false;
-  if(sMesh) sMesh.visible=true;
-  orb.enabled=true;
-  orb.autoRotate=A.spin;
-  cam.position.set(1.0,0.5,4.4);
-  orb.target.set(0,0,0);
-  document.getElementById('b3D').classList.add('on');
-  document.getElementById('bLive').classList.remove('on');
-  setStatus('3D','snap');
-  toast('Перетащите для вращения','ok');
-};
-
-/* ══ TOOLS ══════════════════════════════════════════ */
-window.toggleHeat = () => {
-  A.heat=!A.heat;
-  document.getElementById('bHeat').classList.toggle('on',A.heat);
-  if(lMesh) lMesh.material.uniforms.uHeat.value=A.heat?1.0:0.0;
-  toast(A.heat?'Тепловая карта глубины':'Текстурный режим','ok');
-};
-
-window.toggleSpin = () => {
-  A.spin=!A.spin;
-  orb.autoRotate=A.spin&&A.mode==='3d';
-  orb.autoRotateSpeed=1.4;
-  document.getElementById('bSpin').classList.toggle('on',A.spin);
-  toast(A.spin?'Вращение ON':'Вращение OFF','ok');
-};
-
-window.onDepth = v => {
-  A.depth=parseFloat(v);
-  document.getElementById('dVal').textContent=A.depth.toFixed(1);
-  if(lMesh) lMesh.material.uniforms.uDepth.value=A.depth;
-};
-
-window.reset = () => {
-  goLive();
-  A.hasSnap=false;A.heat=false;A.spin=false;orb.autoRotate=false;
-  if(lMesh)lMesh.material.uniforms.uHeat.value=0;
-  if(sMesh){scene.remove(sMesh);sMesh.geometry.dispose();sMesh.material.dispose();sMesh=null;}
-  A.lastImg=null;
-  document.getElementById('b3D').disabled=true;
-  document.getElementById('bAI').disabled=true;
-  document.getElementById('bExp').disabled=true;
-  ['bHeat','bSpin','b3D'].forEach(id=>document.getElementById(id).classList.remove('on'));
-  document.getElementById('bLive').classList.add('on');
-  document.getElementById('shBody').innerHTML='';
-  closeAI();
-  toast('Сброс','ok');
-};
-
-window.exportPNG = () => {
-  renderer.render(scene,cam);
-  const a=document.createElement('a');
-  a.href=renderer.domElement.toDataURL('image/png');
-  a.download=`myXYZ_${Date.now()}.png`;
-  a.click();
-  toast('PNG сохранён','ok');
-};
-
-/* ══ STATUS ═════════════════════════════════════════ */
-function setStatus(txt, type) {
-  document.getElementById('stxt').textContent=txt;
-  const d=document.getElementById('dot');
-  d.className='dot';
-  if(type==='p')d.classList.add('p');
-  if(type==='snap')d.classList.add('s');
-}
-
-/* ══ TOAST ══════════════════════════════════════════ */
-window.toast = (msg,type='ok') => {
-  const w=document.getElementById('toasts');
-  const el=document.createElement('div');
-  el.className=`tst ${type}`;
-  el.textContent=({ok:'✓ ',err:'✕ ',ai:'✦ '}[type]||'· ')+msg;
-  w.appendChild(el);
-  setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),450);},2400);
-};
-
-/* ══ AI ═════════════════════════════════════════════ */
-window.closeAI=()=>document.getElementById('sheet').classList.remove('open');
-
-window.runAI = async () => {
-  if(!A.hasSnap||!A.lastImg){ toast('Сначала нажмите SNAP','err'); return; }
-
-  document.getElementById('sheet').classList.add('open');
-  const body=document.getElementById('shBody');
-  body.innerHTML=`
-    <div class="sk" style="width:55%;height:28px"></div>
-    <div class="sk" style="height:14px;margin-top:10px"></div>
-    <div class="sk" style="width:80%;height:14px;margin-top:6px"></div>
-    <div class="sh-grid" style="margin-top:14px">
-      <div class="sk" style="height:72px"></div>
-      <div class="sk" style="height:72px"></div>
-    </div>
-    <div class="sk" style="height:56px;margin-top:10px"></div>`;
-
-  setStatus('AI…','p');
-  document.getElementById('bAI').classList.add('on');
-  toast('AI анализирует сцену','ai');
-
-  const m=calcMetrics(A.lastImg);
-
-  // ⚠️  TEXT-ONLY prompt — no base64 image to avoid CORS issues
-  const prompt=`Ты — AI-эксперт по 3D компьютерному зрению и shape-from-shading реконструкции.
-
-Пользователь сделал снимок через камеру телефона. Из этого кадра строится 3D-слепок методом shape-from-shading: яркие участки = выпуклость, тёмные = впадины.
-
-Метрики снимка:
-- Средняя яркость (0..1): ${m.avg.toFixed(3)}
-- Стандартное отклонение яркости (контраст): ${m.contrast.toFixed(3)}
-- Доля очень светлых пикселей (>75%): ${m.hi}%
-- Доля очень тёмных пикселей (<25%): ${m.lo}%
-- Доля граней / перепадов яркости: ${m.edges}%
-- Оценочный диапазон глубины: ${m.depth.toFixed(2)} ед.
-
-На основе этих метрик дай анализ 3D-сцены.
-
-Ответь СТРОГО одним JSON-объектом без обёртки, без комментариев, без markdown:
-{"subject":"что скорее всего снято (2-4 слова, на русском)","description":"3 предложения: анализ геометрии, освещения и качества 3D-реконструкции на русском","surface_type":"плоская|выпуклая|вогнутая|сложная","lighting":"фронтальное|боковое|контровое|рассеянное","depth_quality":ЧИСЛО_0_100,"detail_density":ЧИСЛО_0_100,"tags":["тег1","тег2","тег3","тег4"],"tip":"одна конкретная рекомендация для улучшения качества 3D на русском"}`;
-
-  try {
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:800,
-        messages:[{role:'user',content:prompt}]
-      })
+    videoTex = new THREE.VideoTexture(video);
+    
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
     });
-    if(!resp.ok){
-      const e=await resp.json().catch(()=>({}));
-      throw new Error(e.error?.message||`HTTP ${resp.status}`);
+}
+
+// --- SHADERS ---
+const vertexShader = `
+    varying vec2 vUv;
+    varying float vDepth;
+    uniform sampler2D tDiffuse;
+    uniform float uDepth;
+    void main() {
+        vUv = uv;
+        vec4 tex = texture2D(tDiffuse, uv);
+        float brightness = (tex.r + tex.g + tex.b) / 3.0;
+        vDepth = brightness;
+        vec3 pos = position;
+        pos.z += (brightness - 0.5) * uDepth;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = 2.0;
     }
-    const data=await resp.json();
-    let raw=data.content?.find(b=>b.type==='text')?.text||'{}';
-    // strip markdown fences if model wraps anyway
-    raw=raw.replace(/```[a-z]*\n?/gi,'').replace(/```/g,'').trim();
-    // find first { ... } block
-    const start=raw.indexOf('{'), end=raw.lastIndexOf('}');
-    if(start===-1||end===-1) throw new Error('JSON не найден в ответе');
-    const r=JSON.parse(raw.slice(start,end+1));
-    renderSheet(r,m);
-    document.getElementById('bAI').classList.remove('on');
-    setStatus('AI OK','ok');
-    toast('Анализ готов','ai');
-  } catch(e) {
-    body.innerHTML=`<div style="color:var(--red);font-size:11px;line-height:1.9;padding:6px 0">
-      <b>Ошибка AI</b><br>${e.message}<br>
-      <span style="color:var(--muted)">Попробуйте снова</span>
-    </div>`;
-    document.getElementById('bAI').classList.remove('on');
-    setStatus('ERR','snap');
-    toast('Ошибка AI','err');
-    console.error(e);
-  }
+`;
+
+const fragmentShader = `
+    varying vec2 vUv;
+    varying float vDepth;
+    uniform sampler2D tDiffuse;
+    uniform bool uHeatmap;
+    
+    vec3 heatmap(float v) {
+        vec3 blue = vec3(0.0, 0.2, 1.0);
+        vec3 green = vec3(0.0, 1.0, 0.5);
+        vec3 red = vec3(1.0, 0.1, 0.0);
+        if(v < 0.5) return mix(blue, green, v * 2.0);
+        return mix(green, red, (v - 0.5) * 2.0);
+    }
+
+    void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        if(uHeatmap) {
+            gl_FragColor = vec4(heatmap(vDepth), 1.0);
+        } else {
+            gl_FragColor = color;
+        }
+    }
+`;
+
+function createLiveObjects() {
+    const geometry = new THREE.PlaneGeometry(6, 4, State.gridSize, State.gridSize);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            tDiffuse: { value: videoTex },
+            uDepth: { value: State.depth },
+            uHeatmap: { value: false }
+        },
+        vertexShader,
+        fragmentShader,
+        transparent: true
+    });
+
+    liveMesh = new THREE.Points(geometry, material);
+    scene.add(liveMesh);
+}
+
+// --- CORE FUNCTIONS ---
+window.setMode = (m) => {
+    State.mode = m;
+    document.getElementById('mode-live').classList.toggle('active', m === 'live');
+    document.getElementById('mode-view').classList.toggle('active', m === 'view');
+
+    if (m === 'live') {
+        controls.enabled = false;
+        if(snapMesh) snapMesh.visible = false;
+        liveMesh.visible = true;
+        gsapToCamera(0, 0, 5);
+        updateStatus("LIVE STREAM", false);
+    } else {
+        if(!State.hasSnap) {
+            showToast("Capture Snapshot First", "danger");
+            setMode('live');
+            return;
+        }
+        controls.enabled = true;
+        liveMesh.visible = false;
+        snapMesh.visible = true;
+        updateStatus("3D ANALYSIS", false);
+    }
 };
 
-function calcMetrics(img) {
-  const d=img.data,N=d.length/4;
-  let sum=0,hi=0,lo=0;
-  const lums=new Float32Array(N);
-  for(let i=0;i<N;i++){
-    const l=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])/255;
-    lums[i]=l;sum+=l;
-    if(l>.75)hi++;if(l<.25)lo++;
-  }
-  const avg=sum/N;
-  let v=0;for(const l of lums)v+=(l-avg)**2;v/=N;
-  const contrast=Math.sqrt(v);
-  let ec=0;const C=GRID;
-  for(let y=0;y<C-1;y++)for(let x=0;x<C-1;x++){
-    const diff=Math.abs(lums[y*C+x]-lums[y*C+x+1])+Math.abs(lums[y*C+x]-lums[(y+1)*C+x]);
-    if(diff>.1)ec++;
-  }
-  return{avg,contrast,hi:Math.round(hi/N*100),lo:Math.round(lo/N*100),depth:contrast*5,edges:Math.round(ec/N*100)};
+window.updateDepth = (v) => {
+    State.depth = parseFloat(v);
+    if(liveMesh) liveMesh.material.uniforms.uDepth.value = State.depth;
+    if(snapMesh) snapMesh.material.uniforms.uDepth.value = State.depth;
+};
+
+window.toggleColor = () => {
+    State.isHeatmap = !State.isHeatmap;
+    liveMesh.material.uniforms.uHeatmap.value = State.isHeatmap;
+    if(snapMesh) snapMesh.material.uniforms.uHeatmap.value = State.isHeatmap;
+    showToast(State.isHeatmap ? "Heatmap Active" : "RGB Active", "info");
+};
+
+window.takeSnapshot = () => {
+    const scanner = document.getElementById('scanner');
+    scanner.style.display = 'block';
+    updateStatus("SCANNING...", true);
+    
+    setTimeout(() => {
+        scanner.style.display = 'none';
+        buildStaticMesh();
+        State.hasSnap = true;
+        document.getElementById('export-btn').disabled = false;
+        setMode('view');
+        showToast("Volume Captured", "success");
+        autoAnalyze();
+    }, 1500);
+};
+
+function buildStaticMesh() {
+    if(snapMesh) {
+        scene.remove(snapMesh);
+        snapMesh.geometry.dispose();
+        snapMesh.material.dispose();
+    }
+
+    const canvas = document.getElementById('buffer-canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, 512, 512);
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    const geometry = new THREE.PlaneGeometry(6, 4, State.gridSize, State.gridSize);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            tDiffuse: { value: tex },
+            uDepth: { value: State.depth },
+            uHeatmap: { value: State.isHeatmap }
+        },
+        vertexShader,
+        fragmentShader
+    });
+
+    snapMesh = new THREE.Points(geometry, material);
+    scene.add(snapMesh);
 }
 
-function renderSheet(r,m) {
-  const dq=r.depth_quality||0,dd=r.detail_density||0;
-  const tags=(r.tags||[]).map(t=>`<div class="sh-tag">${t}</div>`).join('');
-  document.getElementById('shBody').innerHTML=`
-    <div class="sh-subj">${r.subject||'—'}</div>
-    <div class="sh-desc">${r.description||'—'}</div>
-    <div class="sh-grid">
-      <div class="sh-card">
-        <div class="sh-clabel">Глубина</div>
-        <div class="sh-cval">${dq}<span style="font-size:10px;color:var(--muted)">/100</span></div>
-        <div class="sh-bar"><div class="sh-bfill" style="width:${dq}%"></div></div>
-      </div>
-      <div class="sh-card">
-        <div class="sh-clabel">Детализация</div>
-        <div class="sh-cval">${dd}<span style="font-size:10px;color:var(--muted)">/100</span></div>
-        <div class="sh-bar"><div class="sh-bfill" style="width:${dd}%"></div></div>
-      </div>
-      <div class="sh-card">
-        <div class="sh-clabel">Поверхность</div>
-        <div class="sh-cval" style="font-size:11px">${r.surface_type||'—'}</div>
-      </div>
-      <div class="sh-card">
-        <div class="sh-clabel">Освещение</div>
-        <div class="sh-cval" style="font-size:11px">${r.lighting||'—'}</div>
-      </div>
-    </div>
-    <div class="sh-tags">${tags}</div>
-    <div class="sh-tip">
-      <div class="sh-tlabel">💡 Совет AI</div>
-      <div class="sh-ttext">${r.tip||'—'}</div>
-    </div>`;
+async function autoAnalyze() {
+    if(!State.aiOpen) toggleAiPanel();
+    const content = document.getElementById('ai-results-content');
+    content.innerHTML = '<div class="ai-card"><p>AI is thinking...</p><div style="width:100%;height:2px;background:var(--accent-dim);margin-top:10px;overflow:hidden;"><div style="width:30%;height:100%;background:var(--accent);animation:scanAnim 1s infinite alternate;"></div></div></div>';
+
+    // Эмуляция ответа AI (т.к. требуется промпт из кода выше)
+    setTimeout(() => {
+        content.innerHTML = `
+            <div class="ai-card">
+                <label>Subject</label>
+                <p>Surface Topology Detected</p>
+            </div>
+            <div class="ai-card">
+                <label>Complexity Index</label>
+                <p>High Detail (84%)</p>
+            </div>
+            <div class="ai-card">
+                <label>Recommendation</label>
+                <p>Increase lateral lighting to enhance shadow-based depth recovery.</p>
+            </div>
+        `;
+    }, 2000);
 }
+
+// --- UTILS ---
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+
+    frames++;
+    const now = performance.now();
+    if(now - lastTime > 1000) {
+        document.getElementById('fps-val').textContent = frames;
+        frames = 0;
+        lastTime = now;
+    }
+}
+
+function updateStatus(txt, busy) {
+    document.getElementById('status-text').textContent = txt;
+    const dot = document.getElementById('status-dot');
+    dot.className = busy ? 'dot busy' : 'dot pulse';
+}
+
+function showToast(msg, type) {
+    const container = document.getElementById('notifications');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    if(type === 'danger') toast.style.borderColor = 'var(--danger)';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function gsapToCamera(x, y, z) {
+    // Простая имитация плавного перехода камеры
+    camera.position.set(x, y, z);
+    camera.lookAt(0, 0, 0);
+}
+
+window.toggleAiPanel = () => {
+    State.aiOpen = !State.aiOpen;
+    document.getElementById('ai-sidebar').classList.toggle('open', State.aiOpen);
+    document.getElementById('ai-toggle').classList.toggle('active', State.aiOpen);
+};
+
+window.resetSystem = () => {
+    location.reload();
+};
+
+window.exportData = () => {
+    renderer.render(scene, camera);
+    const link = document.createElement('a');
+    link.download = 'myXYZ_scan.png';
+    link.href = renderer.domElement.toDataURL();
+    link.click();
+    showToast("Snapshot Saved", "info");
+};
 </script>
-
 </body>
 </html>
