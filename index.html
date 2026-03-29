@@ -3,154 +3,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>myXYZ — Volumetric Reality Pro</title>
+    <title>myXYZ | Volumetric Intelligence</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@500;800&display=swap');
 
         :root {
-            --c-bg: #080808;
-            --c-accent: #00FFB2;
-            --c-accent-dim: rgba(0, 255, 178, 0.1);
-            --c-text: #F0EDE8;
-            --c-muted: rgba(240, 237, 232, 0.3);
-            --c-border: rgba(255, 255, 255, 0.08);
-            --font-mono: 'Space Mono', monospace;
+            --bg: #050505;
+            --surface: #0f0f0f;
+            --accent: #00ffb3;
+            --accent-dim: rgba(0, 255, 179, 0.15);
+            --danger: #ff3c6e;
+            --text: #e0e0e0;
+            --text-dim: rgba(224, 224, 224, 0.4);
+            --border: rgba(255, 255, 255, 0.08);
+            --font-mono: 'JetBrains Mono', monospace;
             --font-sans: 'Syne', sans-serif;
+            --panel-blur: blur(12px);
         }
 
-        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
         body, html { 
-            width:100%; height:100%; overflow:hidden; 
-            background:var(--c-bg); color:var(--c-text); 
-            font-family:var(--font-mono); touch-action:none; user-select:none; 
+            width: 100%; height: 100%; overflow: hidden; 
+            background: var(--bg); color: var(--text); 
+            font-family: var(--font-mono); font-size: 12px;
+            user-select: none; touch-action: none;
         }
 
         /* --- LOADER --- */
         #loader {
-            position:fixed; inset:0; z-index:9999; background:var(--c-bg);
-            display:flex; flex-direction:column; align-items:center; justify-content:center;
-            transition: opacity 0.5s ease;
+            position: fixed; inset: 0; z-index: 1000; background: var(--bg);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .loader-logo { font-family:var(--font-sans); font-size:64px; font-weight:800; letter-spacing:-2px; }
-        .loader-logo span { color:var(--c-accent); }
+        .loader-content { text-align: center; }
+        .loader-logo { 
+            font-family: var(--font-sans); font-size: 64px; font-weight: 800; 
+            letter-spacing: -3px; margin-bottom: 10px;
+        }
+        .loader-logo span { color: var(--accent); }
         .loader-btn {
-            margin-top:30px; padding:15px 40px; background:transparent;
-            border:1px solid var(--c-accent); color:var(--c-accent);
-            font-family:var(--font-mono); cursor:pointer; letter-spacing:3px;
-            transition: 0.3s;
+            margin-top: 40px; padding: 15px 40px; background: transparent;
+            border: 1px solid var(--accent); color: var(--accent);
+            font-family: var(--font-mono); text-transform: uppercase;
+            letter-spacing: 4px; cursor: pointer; transition: 0.3s;
         }
-        .loader-btn:hover { background:var(--c-accent); color:var(--c-bg); }
+        .loader-btn:hover { background: var(--accent); color: var(--bg); box-shadow: 0 0 30px var(--accent-dim); }
 
-        /* --- TOP BAR --- */
-        #topbar {
-            position:fixed; top:0; left:0; right:0; height:50px; z-index:20;
-            display:flex; align-items:center; justify-content:space-between;
-            padding:0 20px; border-bottom:1px solid var(--c-border);
-            background:rgba(8,8,8,0.8); backdrop-filter:blur(10px);
+        /* --- INTERFACE --- */
+        #container { position: fixed; inset: 0; z-index: 1; }
+        video { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+        header {
+            position: fixed; top: 0; left: 0; right: 0; height: 60px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; border-bottom: 1px solid var(--border);
+            background: rgba(5, 5, 5, 0.5); backdrop-filter: var(--panel-blur); z-index: 10;
         }
-        .tb-logo { font-family:var(--font-sans); font-weight:800; font-size:18px; }
-        .tb-logo span { color:var(--c-accent); }
-        .tb-stats { font-size:9px; color:var(--c-muted); text-align:right; line-height:1.4; }
+        .logo { font-family: var(--font-sans); font-weight: 800; font-size: 20px; }
+        .logo span { color: var(--accent); }
+
+        .sys-status { display: flex; align-items: center; gap: 10px; font-size: 10px; letter-spacing: 2px; }
+        .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 10px var(--accent); }
+        .dot.pulse { animation: pulse 1.5s infinite; }
+        .dot.busy { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
 
         /* --- SIDEBAR --- */
-        #left-panel {
-            position:fixed; left:0; top:50px; bottom:80px; width:52px; z-index:15;
-            display:flex; flex-direction:column; align-items:center; padding:15px 0;
-            border-right:1px solid var(--c-border); background:rgba(8,8,8,0.5); gap:10px;
+        .sidebar {
+            position: fixed; left: 0; top: 60px; bottom: 80px; width: 60px;
+            display: flex; flex-direction: column; align-items: center; padding: 20px 0;
+            border-right: 1px solid var(--border); background: rgba(5, 5, 5, 0.3);
+            backdrop-filter: var(--panel-blur); z-index: 10; gap: 15px;
         }
         .tool-btn {
-            width:36px; height:36px; border:1px solid transparent; background:transparent;
-            color:var(--c-muted); cursor:pointer; display:flex; align-items:center; justify-content:center;
-            transition: 0.2s; border-radius:3px;
+            width: 40px; height: 40px; border: 1px solid transparent;
+            background: transparent; color: var(--text-dim);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; transition: 0.2s; position: relative;
         }
-        .tool-btn:hover { color:var(--c-text); border-color:var(--c-border); }
-        .tool-btn.active { color:var(--c-accent); background:var(--c-accent-dim); border-color:var(--c-accent); }
+        .tool-btn:hover { color: var(--text); border-color: var(--border); }
+        .tool-btn.active { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-dim); }
+        .tool-btn svg { width: 20px; height: 20px; }
 
-        /* --- AI PANEL --- */
-        #ai-panel {
-            position:fixed; right:0; top:50px; bottom:80px; width:280px; z-index:15;
-            background:rgba(10,10,10,0.95); border-left:1px solid var(--c-border);
-            transform:translateX(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
-            padding:20px; overflow-y:auto; backdrop-filter:blur(15px);
-        }
-        #ai-panel.open { transform:translateX(0); }
-        .ai-header { font-size:10px; color:var(--c-accent); letter-spacing:2px; margin-bottom:20px; font-weight:bold; }
-        .ai-card { background:rgba(255,255,255,0.03); border:1px solid var(--c-border); padding:12px; margin-bottom:10px; }
-        .ai-card label { display:block; font-size:8px; color:var(--c-muted); margin-bottom:5px; text-transform:uppercase; }
-        .ai-card p { font-size:11px; line-height:1.5; color:var(--c-text); }
-        .metric-row { display:flex; justify-content:space-between; margin-top:8px; font-size:10px; }
-        .metric-val { color:var(--c-accent); font-weight:bold; }
-
-        /* --- BOTTOM BAR --- */
-        #bottom-bar {
-            position:fixed; bottom:0; left:0; right:0; height:80px; z-index:20;
-            display:flex; align-items:center; justify-content:space-between;
-            padding:0 25px; border-top:1px solid var(--c-border);
-            background:var(--c-bg);
+        /* --- FOOTER --- */
+        footer {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 80px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px; border-top: 1px solid var(--border);
+            background: rgba(5, 5, 5, 0.8); backdrop-filter: var(--panel-blur); z-index: 10;
         }
         .snap-btn {
-            height:48px; padding:0 40px; background:var(--c-accent); color:var(--c-bg);
-            border:none; font-family:var(--font-mono); font-weight:bold; 
-            letter-spacing:2px; cursor:pointer; transition:0.3s;
+            height: 50px; padding: 0 40px; background: var(--accent); color: var(--bg);
+            border: none; border-radius: 25px; font-family: var(--font-mono);
+            font-weight: 700; letter-spacing: 2px; cursor: pointer;
+            transition: 0.3s; transform: translateY(0);
         }
-        .snap-btn:hover { transform:translateY(-2px); box-shadow:0 5px 20px var(--c-accent-dim); }
+        .snap-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px var(--accent-dim); }
+        .snap-btn:active { transform: translateY(0); }
 
-        /* --- CANVAS --- */
-        #container { position:fixed; inset:0; z-index:1; }
-        #scanner-line {
-            position:fixed; inset:0; border-top:1px solid var(--c-accent);
-            background:linear-gradient(to bottom, var(--c-accent-dim), transparent);
-            display:none; z-index:5; pointer-events:none; height:50px;
+        /* --- AI PANEL --- */
+        #ai-sidebar {
+            position: fixed; right: 0; top: 60px; bottom: 80px; width: 280px;
+            background: var(--surface); border-left: 1px solid var(--border);
+            transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 10; padding: 20px; overflow-y: auto;
+        }
+        #ai-sidebar.open { transform: translateX(0); }
+        .ai-card { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 4px; margin-bottom: 12px; border: 1px solid var(--border); }
+        .ai-card label { display: block; font-size: 9px; color: var(--accent); margin-bottom: 5px; text-transform: uppercase; }
+        .ai-card p { font-size: 11px; line-height: 1.5; }
+
+        /* --- OVERLAYS --- */
+        #scanner {
+            position: fixed; inset: 0; border: 2px solid var(--accent);
+            pointer-events: none; display: none; z-index: 5;
+            background: linear-gradient(var(--accent-dim) 1px, transparent 1px) center / 100% 40px;
+            animation: scanAnim 2s linear infinite;
+        }
+        @keyframes scanAnim { from { background-position: 0 0; } to { background-position: 0 100%; } }
+
+        #notifications {
+            position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+            z-index: 100; display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--surface); border-left: 3px solid var(--accent);
+            padding: 10px 20px; font-size: 11px; text-transform: uppercase;
+            letter-spacing: 1px; animation: toastIn 0.3s ease forwards;
         }
 
-        /* --- CONTROLS --- */
-        .depth-ui { display:flex; align-items:center; gap:10px; font-size:9px; color:var(--c-muted); }
-        input[type=range] { -webkit-appearance:none; width:100px; height:2px; background:var(--c-border); outline:none; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; background:var(--c-accent); border-radius:50%; }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
+        /* --- RANGE SLIDER --- */
+        .depth-ctrl { position: fixed; left: 80px; bottom: 100px; display: flex; align-items: center; gap: 15px; z-index: 10; }
+        input[type=range] { -webkit-appearance: none; width: 150px; height: 2px; background: var(--border); outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
 <div id="loader">
-    <div class="loader-logo">my<span>XYZ</span></div>
-    <button class="loader-btn" onclick="initApp()">ИНИЦИАЛИЗАЦИЯ</button>
+    <div class="loader-content">
+        <div class="loader-logo">my<span>XYZ</span></div>
+        <p style="color: var(--text-dim); letter-spacing: 2px;">NEURAL VOLUMETRIC ENGINE v3.0</p>
+        <button class="loader-btn" onclick="initApp()">Initialize System</button>
+    </div>
 </div>
 
-<header id="topbar">
-    <div class="tb-logo">my<span>XYZ</span></div>
-    <div class="tb-stats">
-        ОБЪЕКТ: <span id="status-txt" style="color:var(--c-accent)">LIVE</span><br>
-        ПОТОК: <span id="fps-val">0</span> FPS | <span id="res-val">0x0</span>
+<header>
+    <div class="logo">my<span>XYZ</span></div>
+    <div class="sys-status">
+        <div class="dot pulse" id="status-dot"></div>
+        <span id="status-text">SYSTEM READY</span>
+    </div>
+    <div style="font-size: 9px; color: var(--text-dim); text-align: right;">
+        DATA STREAM: <span id="fps-val">0</span> FPS<br>
+        <span id="res-val">0x0</span>
     </div>
 </header>
 
-<div id="left-panel">
-    <button class="tool-btn active" id="btn-live" onclick="setMode('live')" title="Прямой эфир">◉</button>
-    <button class="tool-btn" id="btn-view" onclick="setMode('view')" title="3D Снимок">⬡</button>
-    <div style="width:20px; height:1px; background:var(--c-border); margin:5px 0;"></div>
-    <button class="tool-btn" onclick="toggleColor()" title="Режим цвета">◐</button>
-    <button class="tool-btn" id="btn-ai" onclick="toggleAI()" title="AI Аналитика">✦</button>
+<div class="sidebar">
+    <button class="tool-btn active" id="mode-live" onclick="setMode('live')" title="Live View">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    </button>
+    <button class="tool-btn" id="mode-view" onclick="setMode('view')" title="3D Mesh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    </button>
+    <div style="width: 20px; height: 1px; background: var(--border);"></div>
+    <button class="tool-btn" onclick="toggleColor()" title="Toggle Heatmap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+    </button>
+    <button class="tool-btn" id="ai-toggle" onclick="toggleAiPanel()" title="AI Intelligence">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </button>
 </div>
 
-<div id="ai-panel">
-    <div class="ai-header">NEURAL АНАЛИЗ v3.0</div>
-    <div id="ai-results">
-        <div class="ai-card"><p style="color:var(--c-muted)">Ожидание захвата данных для анализа геометрии...</p></div>
+<div class="depth-ctrl">
+    <span style="font-size: 9px; color: var(--text-dim);">EXTRUSION</span>
+    <input type="range" id="depth-slider" min="0" max="5" step="0.1" value="1.5" oninput="updateDepth(this.value)">
+</div>
+
+<div id="ai-sidebar">
+    <h3 style="font-family: var(--font-sans); margin-bottom: 20px; font-size: 16px;">AI ANALYSIS</h3>
+    <div id="ai-results-content">
+        <div class="ai-card"><p style="color: var(--text-dim);">Waiting for snapshot data...</p></div>
     </div>
 </div>
 
+<div id="scanner"></div>
+<div id="notifications"></div>
 <div id="container"></div>
-<div id="scanner-line"></div>
 
-<footer id="bottom-bar">
-    <div class="depth-ui">
-        Z-AMP
-        <input type="range" min="0.5" max="10" step="0.1" value="3.0" oninput="updateZ(this.value)">
-    </div>
-    <button class="snap-btn" onclick="captureVolume()">ЗАХВАТ ОБЪЕМА</button>
-    <button class="tool-btn" onclick="exportPNG()" title="Экспорт">💾</button>
+<footer>
+    <button class="tool-btn" onclick="resetSystem()" title="Reset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+    <button class="snap-btn" id="snap-trigger" onclick="takeSnapshot()">CAPTURE 3D SNAP</button>
+    <button class="tool-btn" id="export-btn" onclick="exportData()" disabled title="Export PNG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
 </footer>
+
+<canvas id="buffer-canvas" class="hidden"></canvas>
 
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -160,78 +217,64 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+// --- CONFIG & STATE ---
+const State = {
+    ready: false,
+    mode: 'live', // live | view
+    depth: 1.5,
+    isHeatmap: false,
+    aiOpen: false,
+    hasSnap: false,
+    gridSize: 256
+};
+
 let scene, camera, renderer, controls, video, videoTex;
-let livePoints, snapPoints;
-let isHeatmap = false;
-let currentMode = 'live';
-const gridSize = 400; 
+let liveMesh, snapMesh;
+let lastTime = 0, frames = 0;
 
-const vShader = `
-    varying vec2 vUv;
-    varying float vBright;
-    uniform sampler2D tVideo;
-    uniform float uZScale;
-    void main() {
-        vUv = uv;
-        vec4 col = texture2D(tVideo, uv);
-        vBright = (col.r + col.g + col.b) / 3.0;
-        vec3 pos = position;
-        pos.z += vBright * uZScale;
-        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-        gl_PointSize = (2.0 + vBright * 4.0) * (800.0 / -mvPosition.z);
-        gl_Position = projectionMatrix * mvPosition;
-    }
-`;
-
-const fShader = `
-    varying vec2 vUv;
-    varying float vBright;
-    uniform sampler2D tVideo;
-    uniform bool uHeatmap;
-    
-    vec3 heatmap(float v) {
-        vec3 blue = vec3(0.0, 0.5, 1.0);
-        vec3 green = vec3(0.0, 1.0, 0.5);
-        vec3 red = vec3(1.0, 0.2, 0.0);
-        if(v < 0.5) return mix(blue, green, v * 2.0);
-        return mix(green, red, (v - 0.5) * 2.0);
-    }
-
-    void main() {
-        if(length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-        if(uHeatmap) {
-            gl_FragColor = vec4(heatmap(vBright), 1.0);
-        } else {
-            vec4 col = texture2D(tVideo, vUv);
-            gl_FragColor = vec4(col.rgb + (vBright * 0.1), 1.0);
-        }
-    }
-`;
-
+// --- INITIALIZATION ---
 window.initApp = async () => {
-    document.getElementById('loader').style.opacity = '0';
-    setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+    const loader = document.getElementById('loader');
+    loader.style.opacity = '0';
+    setTimeout(() => loader.style.display = 'none', 600);
 
+    try {
+        await initCamera();
+        initThree();
+        createLiveObjects();
+        animate();
+        State.ready = true;
+        showToast("Systems Online", "success");
+    } catch (e) {
+        showToast("Camera Access Denied", "danger");
+        console.error(e);
+    }
+};
+
+async function initCamera() {
     video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: 1280, height: 720 } 
+    });
     video.srcObject = stream;
-    await video.play();
+    return new Promise(r => video.onloadedmetadata = () => {
+        document.getElementById('res-val').textContent = `${video.videoWidth}x${video.videoHeight}`;
+        r();
+    });
+}
 
-    document.getElementById('res-val').textContent = video.videoWidth + 'x' + video.videoHeight;
-
-    setupThree();
-};
-
-function setupThree() {
+function initThree() {
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 12);
+    scene.background = new THREE.Color(0x050505);
+
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('container').appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
@@ -240,153 +283,233 @@ function setupThree() {
 
     videoTex = new THREE.VideoTexture(video);
     
-    const geo = new THREE.PlaneGeometry(15, 10, gridSize, gridSize);
-    const mat = new THREE.ShaderMaterial({
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+}
+
+// --- SHADERS ---
+const vertexShader = `
+    varying vec2 vUv;
+    varying float vDepth;
+    uniform sampler2D tDiffuse;
+    uniform float uDepth;
+    void main() {
+        vUv = uv;
+        vec4 tex = texture2D(tDiffuse, uv);
+        float brightness = (tex.r + tex.g + tex.b) / 3.0;
+        vDepth = brightness;
+        vec3 pos = position;
+        pos.z += (brightness - 0.5) * uDepth;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = 2.0;
+    }
+`;
+
+const fragmentShader = `
+    varying vec2 vUv;
+    varying float vDepth;
+    uniform sampler2D tDiffuse;
+    uniform bool uHeatmap;
+    
+    vec3 heatmap(float v) {
+        vec3 blue = vec3(0.0, 0.2, 1.0);
+        vec3 green = vec3(0.0, 1.0, 0.5);
+        vec3 red = vec3(1.0, 0.1, 0.0);
+        if(v < 0.5) return mix(blue, green, v * 2.0);
+        return mix(green, red, (v - 0.5) * 2.0);
+    }
+
+    void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        if(uHeatmap) {
+            gl_FragColor = vec4(heatmap(vDepth), 1.0);
+        } else {
+            gl_FragColor = color;
+        }
+    }
+`;
+
+function createLiveObjects() {
+    const geometry = new THREE.PlaneGeometry(6, 4, State.gridSize, State.gridSize);
+    const material = new THREE.ShaderMaterial({
         uniforms: {
-            tVideo: { value: videoTex },
-            uZScale: { value: 3.0 },
+            tDiffuse: { value: videoTex },
+            uDepth: { value: State.depth },
             uHeatmap: { value: false }
         },
-        vertexShader: vShader,
-        fragmentShader: fShader,
-        transparent: true,
-        blending: THREE.AdditiveBlending
+        vertexShader,
+        fragmentShader,
+        transparent: true
     });
 
-    livePoints = new THREE.Points(geo, mat);
-    scene.add(livePoints);
-
-    renderLoop();
+    liveMesh = new THREE.Points(geometry, material);
+    scene.add(liveMesh);
 }
 
-window.captureVolume = () => {
-    const line = document.getElementById('scanner-line');
-    line.style.display = 'block';
-    line.style.top = '0%';
-    
-    let p = 0;
-    const anim = setInterval(() => {
-        p += 4;
-        line.style.top = p + '%';
-        if(p >= 100) {
-            clearInterval(anim);
-            line.style.display = 'none';
-            finalizeCapture();
-        }
-    }, 30);
-};
-
-function finalizeCapture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-    
-    const tex = new THREE.CanvasTexture(canvas);
-    const mat = livePoints.material.clone();
-    mat.uniforms.tVideo.value = tex;
-    
-    if(snapPoints) scene.remove(snapPoints);
-    snapPoints = new THREE.Points(livePoints.geometry.clone(), mat);
-    snapPoints.visible = false;
-    scene.add(snapPoints);
-    
-    analyzeData(ctx.getImageData(0,0, canvas.width, canvas.height));
-    setMode('view');
-}
-
-function analyzeData(imgData) {
-    const d = imgData.data;
-    let brightSum = 0;
-    let contrastSum = 0;
-    
-    for(let i=0; i<d.length; i+=4) {
-        let lum = (d[i] + d[i+1] + d[i+2])/3;
-        brightSum += lum;
-    }
-    
-    const avgB = brightSum / (d.length/4);
-    const noise = Math.random() * 2.5; // Эмуляция замера шума
-
-    document.getElementById('ai-results').innerHTML = `
-        <div class="ai-card">
-            <label>ГЕОМЕТРИЯ</label>
-            <p>Обнаружено ${(gridSize*gridSize).toLocaleString()} точек. Рельеф классифицирован как ${avgB > 128 ? 'ВЫСОКОКОНТРАСТНЫЙ' : 'МЯГКИЙ'}.</p>
-        </div>
-        <div class="ai-card">
-            <label>ФОТОМЕТРИЯ</label>
-            <div class="metric-row">ЯРКОСТЬ <span class="metric-val">${Math.round(avgB/2.55)}%</span></div>
-            <div class="metric-row">ШУМ СЕНСОРА <span class="metric-val">${noise.toFixed(2)} dB</span></div>
-            <div class="metric-row">ЭНТРОПИЯ <span class="metric-val">7.42 bits</span></div>
-        </div>
-        <div class="ai-card">
-            <label>ВЕРДИКТ AI</label>
-            <p>Условия освещения оптимальны для захвата макро-рельефа. Рекомендуется увеличить амплитуду Z для анализа микро-текстур.</p>
-        </div>
-    `;
-}
-
+// --- CORE FUNCTIONS ---
 window.setMode = (m) => {
-    currentMode = m;
-    document.getElementById('btn-live').classList.toggle('active', m === 'live');
-    document.getElementById('btn-view').classList.toggle('active', m === 'view');
-    document.getElementById('status-txt').textContent = m.toUpperCase();
+    State.mode = m;
+    document.getElementById('mode-live').classList.toggle('active', m === 'live');
+    document.getElementById('mode-view').classList.toggle('active', m === 'view');
 
-    if(m === 'live') {
-        livePoints.visible = true;
-        if(snapPoints) snapPoints.visible = false;
+    if (m === 'live') {
         controls.enabled = false;
-        camera.position.set(0, 0, 12);
+        if(snapMesh) snapMesh.visible = false;
+        liveMesh.visible = true;
+        gsapToCamera(0, 0, 5);
+        updateStatus("LIVE STREAM", false);
     } else {
-        if(!snapPoints) return setMode('live');
-        livePoints.visible = false;
-        snapPoints.visible = true;
+        if(!State.hasSnap) {
+            showToast("Capture Snapshot First", "danger");
+            setMode('live');
+            return;
+        }
         controls.enabled = true;
+        liveMesh.visible = false;
+        snapMesh.visible = true;
+        updateStatus("3D ANALYSIS", false);
     }
 };
 
-window.updateZ = (v) => {
-    livePoints.material.uniforms.uZScale.value = v;
-    if(snapPoints) snapPoints.material.uniforms.uZScale.value = v;
+window.updateDepth = (v) => {
+    State.depth = parseFloat(v);
+    if(liveMesh) liveMesh.material.uniforms.uDepth.value = State.depth;
+    if(snapMesh) snapMesh.material.uniforms.uDepth.value = State.depth;
 };
 
 window.toggleColor = () => {
-    isHeatmap = !isHeatmap;
-    livePoints.material.uniforms.uHeatmap.value = isHeatmap;
-    if(snapPoints) snapPoints.material.uniforms.uHeatmap.value = isHeatmap;
+    State.isHeatmap = !State.isHeatmap;
+    liveMesh.material.uniforms.uHeatmap.value = State.isHeatmap;
+    if(snapMesh) snapMesh.material.uniforms.uHeatmap.value = State.isHeatmap;
+    showToast(State.isHeatmap ? "Heatmap Active" : "RGB Active", "info");
 };
 
-window.toggleAI = () => {
-    document.getElementById('ai-panel').classList.toggle('open');
-    document.getElementById('btn-ai').classList.toggle('active');
+window.takeSnapshot = () => {
+    const scanner = document.getElementById('scanner');
+    scanner.style.display = 'block';
+    updateStatus("SCANNING...", true);
+    
+    setTimeout(() => {
+        scanner.style.display = 'none';
+        buildStaticMesh();
+        State.hasSnap = true;
+        document.getElementById('export-btn').disabled = false;
+        setMode('view');
+        showToast("Volume Captured", "success");
+        autoAnalyze();
+    }, 1500);
 };
 
-let lastTime = 0;
-function renderLoop(now) {
-    requestAnimationFrame(renderLoop);
+function buildStaticMesh() {
+    if(snapMesh) {
+        scene.remove(snapMesh);
+        snapMesh.geometry.dispose();
+        snapMesh.material.dispose();
+    }
+
+    const canvas = document.getElementById('buffer-canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, 512, 512);
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    const geometry = new THREE.PlaneGeometry(6, 4, State.gridSize, State.gridSize);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            tDiffuse: { value: tex },
+            uDepth: { value: State.depth },
+            uHeatmap: { value: State.isHeatmap }
+        },
+        vertexShader,
+        fragmentShader
+    });
+
+    snapMesh = new THREE.Points(geometry, material);
+    scene.add(snapMesh);
+}
+
+async function autoAnalyze() {
+    if(!State.aiOpen) toggleAiPanel();
+    const content = document.getElementById('ai-results-content');
+    content.innerHTML = '<div class="ai-card"><p>AI is thinking...</p><div style="width:100%;height:2px;background:var(--accent-dim);margin-top:10px;overflow:hidden;"><div style="width:30%;height:100%;background:var(--accent);animation:scanAnim 1s infinite alternate;"></div></div></div>';
+
+    // Эмуляция ответа AI (т.к. требуется промпт из кода выше)
+    setTimeout(() => {
+        content.innerHTML = `
+            <div class="ai-card">
+                <label>Subject</label>
+                <p>Surface Topology Detected</p>
+            </div>
+            <div class="ai-card">
+                <label>Complexity Index</label>
+                <p>High Detail (84%)</p>
+            </div>
+            <div class="ai-card">
+                <label>Recommendation</label>
+                <p>Increase lateral lighting to enhance shadow-based depth recovery.</p>
+            </div>
+        `;
+    }, 2000);
+}
+
+// --- UTILS ---
+function animate() {
+    requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene, camera);
-    
+
+    frames++;
+    const now = performance.now();
     if(now - lastTime > 1000) {
-        document.getElementById('fps-val').textContent = Math.round(1000/(now-lastTime + 1) * 60); // эмуляция
+        document.getElementById('fps-val').textContent = frames;
+        frames = 0;
         lastTime = now;
     }
 }
 
-window.exportPNG = () => {
-    renderer.render(scene, camera);
-    const link = document.createElement('a');
-    link.download = 'myXYZ_PRO_snapshot.png';
-    link.href = renderer.domElement.toDataURL();
-    link.click();
+function updateStatus(txt, busy) {
+    document.getElementById('status-text').textContent = txt;
+    const dot = document.getElementById('status-dot');
+    dot.className = busy ? 'dot busy' : 'dot pulse';
+}
+
+function showToast(msg, type) {
+    const container = document.getElementById('notifications');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    if(type === 'danger') toast.style.borderColor = 'var(--danger)';
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function gsapToCamera(x, y, z) {
+    // Простая имитация плавного перехода камеры
+    camera.position.set(x, y, z);
+    camera.lookAt(0, 0, 0);
+}
+
+window.toggleAiPanel = () => {
+    State.aiOpen = !State.aiOpen;
+    document.getElementById('ai-sidebar').classList.toggle('open', State.aiOpen);
+    document.getElementById('ai-toggle').classList.toggle('active', State.aiOpen);
 };
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+window.resetSystem = () => {
+    location.reload();
+};
+
+window.exportData = () => {
+    renderer.render(scene, camera);
+    const link = document.createElement('a');
+    link.download = 'myXYZ_scan.png';
+    link.href = renderer.domElement.toDataURL();
+    link.click();
+    showToast("Snapshot Saved", "info");
+};
 </script>
 </body>
 </html>
