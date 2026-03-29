@@ -1,273 +1,1067 @@
 <!DOCTYPE html>
+
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>myXYZ</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
-        body { background: #000; font-family: sans-serif; overflow: hidden; color: #fff; }
-        #container { position: relative; width: 100vw; height: 100vh; }
-        video { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        canvas { position: absolute; top: 0; left: 0; z-index: 2; }
-        
-        #ui {
-            position: absolute; bottom: 30px; width: 100%;
-            display: flex; justify-content: center; align-items: center;
-            z-index: 10; gap: 10px; padding: 0 10px; pointer-events: none;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>myXYZ — Volumetric Reality</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap');
 
-        .btn {
-            padding: 15px 25px; border-radius: 5px; border: 1px solid #fff;
-            background: rgba(0, 0, 0, 0.8); color: #fff; font-weight: bold;
-            pointer-events: auto; text-transform: uppercase; font-size: 12px;
-            letter-spacing: 1px; transition: all 0.2s;
-        }
+:root {
+–c-bg: #080808;
+–c-surface: #111;
+–c-border: rgba(255,255,255,0.07);
+–c-accent: #00FFB2;
+–c-accent2: #FF3C6E;
+–c-text: #F0EDE8;
+–c-muted: rgba(240,237,232,0.35);
+–c-panel: rgba(10,10,10,0.92);
+–radius: 3px;
+–mono: ‘Space Mono’, monospace;
+–sans: ‘Syne’, sans-serif;
+}
 
-        #snapBtn { background: #fff; color: #000; }
-        #viewBtn { border-color: #0f0; color: #0f0; }
-        #resetBtn { border-color: #888; color: #888; }
-        
-        .btn:active { transform: scale(0.95); opacity: 0.8; }
-        .btn:disabled { opacity: 0.3; pointer-events: none; }
+- { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:var(–c-bg); color:var(–c-text); font-family:var(–mono); touch-action:none; user-select:none; }
 
-        #overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 100; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; text-align: center;
-        }
+/* ── LOADER ── */
+#loader {
+position:fixed; inset:0; z-index:9999; background:var(–c-bg);
+display:flex; flex-direction:column; align-items:center; justify-content:center;
+gap:0px;
+}
+.loader-logo {
+font-family:var(–sans); font-weight:800; font-size:clamp(36px,10vw,72px);
+letter-spacing:-2px; color:var(–c-text);
+animation: logoIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+}
+.loader-logo span { color:var(–c-accent); }
+.loader-sub {
+font-size:10px; letter-spacing:4px; text-transform:uppercase; color:var(–c-muted);
+margin-top:10px; animation: fadeUp 0.8s 0.3s both;
+}
+.loader-desc {
+max-width:280px; text-align:center; font-size:11px; line-height:1.8;
+color:rgba(240,237,232,0.45); margin-top:28px; animation: fadeUp 0.8s 0.5s both;
+}
+.loader-btn {
+margin-top:36px; padding:14px 36px;
+background:transparent; border:1px solid var(–c-accent);
+color:var(–c-accent); font-family:var(–mono); font-size:11px;
+letter-spacing:3px; text-transform:uppercase; cursor:pointer;
+animation: fadeUp 0.8s 0.7s both;
+transition: background 0.2s, color 0.2s;
+position:relative; overflow:hidden;
+}
+.loader-btn::after {
+content:’’; position:absolute; inset:0;
+background:var(–c-accent); transform:scaleX(0); transform-origin:left;
+transition:transform 0.25s ease; z-index:-1;
+}
+.loader-btn:hover::after { transform:scaleX(1); }
+.loader-btn:hover { color:var(–c-bg); }
+.loader-modes {
+display:flex; gap:12px; margin-top:20px; animation: fadeUp 0.8s 0.9s both;
+}
+.mode-pill {
+padding:6px 14px; font-size:9px; letter-spacing:2px;
+border:1px solid var(–c-border); color:var(–c-muted);
+text-transform:uppercase; border-radius:20px;
+}
 
-        .stats { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 11; font-size: 10px; text-transform: uppercase; color: #fff; opacity: 0.5;}
-    </style>
+/* ── CANVAS & VIDEO ── */
+#container { position:fixed; inset:0; }
+video { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+canvas.three-canvas { position:absolute; inset:0; z-index:2; display:block; }
+
+/* ── TOP BAR ── */
+#topbar {
+position:fixed; top:0; left:0; right:0; z-index:20;
+height:48px; display:flex; align-items:center; justify-content:space-between;
+padding:0 16px;
+border-bottom:1px solid var(–c-border);
+background:linear-gradient(to bottom, rgba(8,8,8,0.95), transparent);
+backdrop-filter:blur(10px);
+}
+.tb-logo { font-family:var(–sans); font-weight:800; font-size:18px; letter-spacing:-0.5px; }
+.tb-logo span { color:var(–c-accent); }
+.tb-status {
+font-size:9px; letter-spacing:2px; text-transform:uppercase;
+display:flex; align-items:center; gap:8px;
+}
+.status-dot {
+width:6px; height:6px; border-radius:50%;
+background:var(–c-accent); box-shadow:0 0 8px var(–c-accent);
+animation:pulse 2s infinite;
+}
+.status-dot.inactive { background:var(–c-muted); box-shadow:none; animation:none; }
+.status-dot.processing { background:#FFD700; box-shadow:0 0 8px #FFD700; animation:pulseFast 0.5s infinite; }
+.tb-meta { font-size:9px; color:var(–c-muted); text-align:right; line-height:1.6; }
+
+/* ── LEFT PANEL ── */
+#left-panel {
+position:fixed; left:0; top:48px; bottom:80px; z-index:15;
+width:52px; display:flex; flex-direction:column; align-items:center;
+padding:16px 0; gap:4px;
+border-right:1px solid var(–c-border);
+background:rgba(8,8,8,0.7); backdrop-filter:blur(10px);
+}
+.tool-btn {
+width:38px; height:38px; border-radius:var(–radius);
+border:1px solid transparent; background:transparent;
+color:var(–c-muted); font-size:16px; cursor:pointer;
+display:flex; align-items:center; justify-content:center;
+transition:all 0.2s; position:relative;
+}
+.tool-btn:hover { border-color:var(–c-border); color:var(–c-text); background:rgba(255,255,255,0.04); }
+.tool-btn.active { border-color:var(–c-accent); color:var(–c-accent); background:rgba(0,255,178,0.05); }
+.tool-btn.accent { border-color:var(–c-accent2); color:var(–c-accent2); background:rgba(255,60,110,0.05); }
+.tool-tip {
+position:absolute; left:calc(100% + 8px);
+background:rgba(10,10,10,0.95); border:1px solid var(–c-border);
+padding:4px 8px; font-size:9px; letter-spacing:1px; white-space:nowrap;
+pointer-events:none; opacity:0; transition:opacity 0.15s;
+text-transform:uppercase; color:var(–c-text);
+}
+.tool-btn:hover .tool-tip { opacity:1; }
+.panel-sep { width:24px; height:1px; background:var(–c-border); margin:6px 0; }
+
+/* ── BOTTOM CONTROLS ── */
+#bottom-bar {
+position:fixed; bottom:0; left:52px; right:0; height:80px; z-index:20;
+display:flex; align-items:center; justify-content:space-between;
+padding:0 20px; gap:12px;
+border-top:1px solid var(–c-border);
+background:linear-gradient(to top, rgba(8,8,8,0.98), rgba(8,8,8,0.7));
+backdrop-filter:blur(10px);
+}
+.bb-left { display:flex; align-items:center; gap:10px; }
+.bb-center { flex:1; display:flex; align-items:center; justify-content:center; }
+.bb-right { display:flex; align-items:center; gap:10px; }
+
+.ctrl-btn {
+height:40px; padding:0 18px; border-radius:var(–radius);
+border:1px solid var(–c-border); background:rgba(255,255,255,0.03);
+color:var(–c-muted); font-family:var(–mono); font-size:9px; letter-spacing:2px;
+text-transform:uppercase; cursor:pointer; transition:all 0.2s;
+display:flex; align-items:center; gap:8px;
+}
+.ctrl-btn:hover:not(:disabled) { border-color:rgba(255,255,255,0.2); color:var(–c-text); background:rgba(255,255,255,0.06); }
+.ctrl-btn:disabled { opacity:0.2; pointer-events:none; }
+.ctrl-btn.primary {
+background:var(–c-accent); border-color:var(–c-accent); color:var(–c-bg);
+font-weight:700; height:48px; padding:0 28px;
+box-shadow:0 0 20px rgba(0,255,178,0.3);
+}
+.ctrl-btn.primary:hover { box-shadow:0 0 32px rgba(0,255,178,0.5); transform:translateY(-1px); }
+.ctrl-btn.primary:active { transform:scale(0.97); }
+.ctrl-btn.danger { border-color:rgba(255,60,110,0.4); color:var(–c-accent2); }
+.ctrl-btn.danger:hover { background:rgba(255,60,110,0.08); }
+
+/* ── RIGHT PANEL (AI Analysis) ── */
+#ai-panel {
+position:fixed; right:0; top:48px; bottom:80px; z-index:15;
+width:220px;
+border-left:1px solid var(–c-border);
+background:var(–c-panel); backdrop-filter:blur(16px);
+display:flex; flex-direction:column;
+transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.16,1,0.3,1);
+overflow:hidden;
+}
+#ai-panel.open { transform:translateX(0); }
+.ap-header {
+padding:14px 16px; border-bottom:1px solid var(–c-border);
+font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(–c-accent);
+display:flex; align-items:center; gap:8px;
+}
+.ap-body { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
+.ap-card {
+background:rgba(255,255,255,0.03); border:1px solid var(–c-border);
+border-radius:var(–radius); padding:10px 12px;
+}
+.ap-card-title { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(–c-muted); margin-bottom:6px; }
+.ap-card-value { font-size:11px; color:var(–c-text); line-height:1.6; }
+.ap-card-value.highlight { color:var(–c-accent); font-weight:700; }
+.ap-bar { height:3px; background:rgba(255,255,255,0.08); border-radius:2px; margin-top:8px; overflow:hidden; }
+.ap-bar-fill { height:100%; background:var(–c-accent); border-radius:2px; transition:width 0.8s ease; }
+.ai-tag {
+display:inline-block; padding:2px 7px; font-size:8px; letter-spacing:1px;
+border-radius:20px; border:1px solid var(–c-accent); color:var(–c-accent);
+text-transform:uppercase; margin:2px;
+}
+.ap-thinking {
+font-size:10px; color:var(–c-muted); font-style:italic;
+padding:12px; text-align:center; line-height:1.8;
+}
+.ap-thinking .dots::after {
+content:’’; animation:dots 1.5s infinite;
+}
+
+/* ── DEPTH SLIDER ── */
+#depth-control {
+position:fixed; left:68px; top:50%; transform:translateY(-50%);
+z-index:15; display:flex; flex-direction:column; align-items:center; gap:8px;
+}
+.depth-label { font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(–c-muted); writing-mode:vertical-rl; }
+input[type=range]#depthSlider {
+-webkit-appearance:none; appearance:none;
+width:3px; height:140px; background:var(–c-border);
+border-radius:2px; outline:none; cursor:pointer;
+writing-mode:vertical-lr; direction:rtl;
+}
+input[type=range]#depthSlider::-webkit-slider-thumb {
+-webkit-appearance:none; width:14px; height:14px;
+border-radius:50%; background:var(–c-accent);
+box-shadow:0 0 8px var(–c-accent); cursor:pointer;
+}
+
+/* ── NOTIFICATIONS ── */
+#notif {
+position:fixed; top:60px; left:50%; transform:translateX(-50%);
+z-index:99; pointer-events:none;
+}
+.notif-msg {
+background:rgba(10,10,10,0.95); border:1px solid var(–c-border);
+padding:8px 16px; font-size:10px; letter-spacing:1px; text-transform:uppercase;
+white-space:nowrap; animation:notifIn 0.3s ease;
+display:flex; align-items:center; gap:8px; margin-bottom:6px;
+}
+.notif-msg.success { border-color:var(–c-accent); color:var(–c-accent); }
+.notif-msg.info { border-color:rgba(255,255,255,0.2); color:var(–c-text); }
+.notif-msg.ai { border-color:#9B6DFF; color:#9B6DFF; }
+
+/* ── HISTOGRAM ── */
+#histogram-wrap {
+position:fixed; left:68px; bottom:92px; z-index:15;
+width:110px; height:48px; opacity:0.6;
+}
+#histogram-wrap canvas { display:block; }
+.hist-label { font-size:7px; letter-spacing:1px; color:var(–c-muted); text-transform:uppercase; margin-bottom:3px; }
+
+/* ── SCAN OVERLAY ── */
+#scan-overlay {
+position:fixed; inset:0; z-index:18; pointer-events:none;
+display:none; overflow:hidden;
+}
+.scan-line {
+position:absolute; left:0; right:0; height:1px;
+background:linear-gradient(90deg, transparent, var(–c-accent), transparent);
+animation:scanMove 2s linear infinite;
+}
+.scan-corners { position:absolute; inset:20px; }
+.scan-corner {
+position:absolute; width:20px; height:20px;
+border-color:var(–c-accent); border-style:solid;
+}
+.sc-tl { top:0; left:0; border-width:2px 0 0 2px; }
+.sc-tr { top:0; right:0; border-width:2px 2px 0 0; }
+.sc-bl { bottom:0; left:0; border-width:0 0 2px 2px; }
+.sc-br { bottom:0; right:0; border-width:0 2px 2px 0; }
+.scan-text {
+position:absolute; bottom:-24px; left:0; right:0; text-align:center;
+font-size:9px; letter-spacing:3px; text-transform:uppercase; color:var(–c-accent);
+}
+
+/* ── AI RESULT OVERLAY ── */
+#ai-result {
+position:fixed; inset:0; z-index:50;
+background:rgba(0,0,0,0.88); backdrop-filter:blur(4px);
+display:none; align-items:center; justify-content:center;
+}
+#ai-result.show { display:flex; }
+.ai-modal {
+background:var(–c-surface); border:1px solid var(–c-border);
+width:min(440px, 90vw); max-height:80vh; overflow-y:auto;
+animation:modalIn 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.aim-header {
+padding:16px 20px; border-bottom:1px solid var(–c-border);
+display:flex; align-items:center; justify-content:space-between;
+}
+.aim-title { font-family:var(–sans); font-size:16px; font-weight:600; }
+.aim-close {
+width:28px; height:28px; border:1px solid var(–c-border); background:transparent;
+color:var(–c-muted); cursor:pointer; display:flex; align-items:center; justify-content:center;
+font-size:14px; transition:all 0.2s;
+}
+.aim-close:hover { border-color:var(–c-accent2); color:var(–c-accent2); }
+.aim-body { padding:20px; }
+.aim-section { margin-bottom:20px; }
+.aim-section-title { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(–c-accent); margin-bottom:10px; }
+.aim-text { font-size:12px; line-height:1.9; color:rgba(240,237,232,0.75); }
+.aim-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+.aim-tag {
+padding:3px 10px; font-size:9px; letter-spacing:1px;
+border:1px solid var(–c-border); color:var(–c-muted);
+text-transform:uppercase; border-radius:20px;
+}
+.aim-metric { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(–c-border); }
+.aim-metric:last-child { border-bottom:none; }
+.aim-metric-name { font-size:10px; color:var(–c-muted); }
+.aim-metric-value { font-size:11px; color:var(–c-text); font-weight:700; }
+
+/* ── MODE INDICATOR ── */
+#mode-badge {
+position:fixed; left:68px; top:58px; z-index:16;
+display:flex; align-items:center; gap:6px;
+padding:4px 10px; font-size:8px; letter-spacing:2px; text-transform:uppercase;
+border:1px solid var(–c-border); background:var(–c-panel);
+color:var(–c-muted); backdrop-filter:blur(8px);
+}
+#mode-badge.snap-mode { border-color:rgba(255,60,110,0.4); color:var(–c-accent2); }
+#mode-badge.view-mode { border-color:var(–c-accent); color:var(–c-accent); }
+
+/* ── KEYFRAMES ── */
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+@keyframes pulseFast { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+@keyframes scanMove { 0%{top:0%} 100%{top:100%} }
+@keyframes notifIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes modalIn { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+@keyframes logoIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes dots { 0%{content:’.’}33%{content:’..’}66%{content:’…’}100%{content:’.’} }
+@keyframes shimmer {
+0%{background-position:-200% 0} 100%{background-position:200% 0}
+}
+.shimmer {
+background:linear-gradient(90deg, var(–c-border) 25%, rgba(255,255,255,0.08) 50%, var(–c-border) 75%);
+background-size:200% 100%; animation:shimmer 1.5s infinite;
+}
+</style>
+
 </head>
 <body>
 
-    <div id="overlay">
-        <h1 style="letter-spacing: 3px; margin-bottom: 20px;">myXYZ</h1>
-        <p style="color: #888; margin-bottom: 30px; max-width: 280px; font-size: 14px;">
-            Создает объемный слепок реальности на основе светотени. <br><br>
-            Наведите на объект (лицо или рельеф) и нажмите SNAP.
-        </p>
-        <button class="btn" onclick="initApp()">Запустить</button>
+<!-- LOADER -->
+
+<div id="loader">
+  <div class="loader-logo">my<span>XYZ</span></div>
+  <div class="loader-sub">Volumetric Reality Engine</div>
+  <div class="loader-desc">
+    Преобразует световые паттерны в объёмные 3D-слепки.<br>
+    AI анализирует геометрию и структуру поверхности.
+  </div>
+  <div class="loader-modes">
+    <div class="mode-pill">Shape from Shading</div>
+    <div class="mode-pill">AI Vision</div>
+    <div class="mode-pill">Live 3D</div>
+  </div>
+  <button class="loader-btn" onclick="initApp()">— Инициализировать —</button>
+</div>
+
+<!-- SCAN OVERLAY -->
+
+<div id="scan-overlay">
+  <div class="scan-line"></div>
+  <div class="scan-corners">
+    <div class="scan-corner sc-tl"></div>
+    <div class="scan-corner sc-tr"></div>
+    <div class="scan-corner sc-bl"></div>
+    <div class="scan-corner sc-br"></div>
+    <div class="scan-text">ANALYZING DEPTH</div>
+  </div>
+</div>
+
+<!-- AI RESULT MODAL -->
+
+<div id="ai-result">
+  <div class="ai-modal">
+    <div class="aim-header">
+      <div class="aim-title">AI Analysis</div>
+      <button class="aim-close" onclick="closeAiResult()">✕</button>
     </div>
+    <div class="aim-body" id="aim-body"></div>
+  </div>
+</div>
 
-    <div class="stats" id="info">STATUS: LIVE STREAM</div>
+<!-- NOTIFICATIONS -->
 
-    <div id="container">
-        <video id="webcam" autoplay playsinline></video>
-        <div id="ui">
-            <button id="snapBtn" class="btn">SNAP</button>
-            <button id="viewBtn" class="btn" disabled>VIEW</button>
-            <button id="resetBtn" class="btn">ESC</button>
-        </div>
+<div id="notif"></div>
+
+<!-- MAIN CONTAINER -->
+
+<div id="container">
+  <video id="webcam" autoplay playsinline></video>
+</div>
+
+<!-- TOP BAR -->
+
+<div id="topbar">
+  <div class="tb-logo">my<span>XYZ</span></div>
+  <div class="tb-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">LIVE</span>
+  </div>
+  <div class="tb-meta" id="tbMeta">RES: — | FPS: —</div>
+</div>
+
+<!-- MODE BADGE -->
+
+<div id="mode-badge">◉ LIVE STREAM</div>
+
+<!-- LEFT PANEL -->
+
+<div id="left-panel">
+  <button class="tool-btn active" id="btnLive" onclick="setMode('live')" title="Live">
+    <span>◉</span>
+    <div class="tool-tip">Live View</div>
+  </button>
+  <button class="tool-btn" id="btnView" onclick="setMode('view')">
+    <span>⬡</span>
+    <div class="tool-tip">3D View</div>
+  </button>
+  <div class="panel-sep"></div>
+  <button class="tool-btn" id="btnWire" onclick="toggleWireframe()">
+    <span>◫</span>
+    <div class="tool-tip">Wireframe</div>
+  </button>
+  <button class="tool-btn" id="btnColor" onclick="toggleColorMode()">
+    <span>◐</span>
+    <div class="tool-tip">Color / Depth</div>
+  </button>
+  <button class="tool-btn" id="btnRotate" onclick="toggleAutoRotate()">
+    <span>↻</span>
+    <div class="tool-tip">Auto Rotate</div>
+  </button>
+  <div class="panel-sep"></div>
+  <button class="tool-btn" id="btnAI" onclick="runAIAnalysis()">
+    <span>✦</span>
+    <div class="tool-tip">AI Analyse</div>
+  </button>
+  <button class="tool-btn" id="btnAIPanel" onclick="toggleAIPanel()">
+    <span>≡</span>
+    <div class="tool-tip">AI Panel</div>
+  </button>
+</div>
+
+<!-- DEPTH CONTROL -->
+
+<div id="depth-control">
+  <div class="depth-label">DEPTH</div>
+  <input type="range" id="depthSlider" min="0.2" max="5" step="0.1" value="2.0"
+    oninput="onDepthChange(this.value)">
+  <div class="depth-label" id="depthVal">2.0</div>
+</div>
+
+<!-- HISTOGRAM -->
+
+<div id="histogram-wrap">
+  <div class="hist-label">LUMINANCE</div>
+  <canvas id="histCanvas" width="110" height="36"></canvas>
+</div>
+
+<!-- AI PANEL -->
+
+<div id="ai-panel">
+  <div class="ap-header">
+    <span>✦</span> AI Analysis
+  </div>
+  <div class="ap-body" id="ap-body">
+    <div class="ap-thinking">Сделайте снимок<br>для AI анализа<span class="dots"></span></div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+
+<div id="bottom-bar">
+  <div class="bb-left">
+    <button class="ctrl-btn danger" id="btnReset" onclick="resetScene()">↺ Сброс</button>
+  </div>
+  <div class="bb-center">
+    <button class="ctrl-btn primary" id="btnSnap" onclick="captureSnap()">⬤ SNAP</button>
+  </div>
+  <div class="bb-right">
+    <button class="ctrl-btn" id="btnExport" onclick="exportSnapshot()" disabled>↗ Экспорт</button>
+    <button class="ctrl-btn" id="btnAIBtn" onclick="runAIAnalysis()" disabled>✦ AI</button>
+  </div>
+</div>
+
+<canvas id="procCanvas" style="display:none;"></canvas>
+
+<!-- SHADERS -->
+
+<script id="vsh" type="x-shader/x-vertex">
+uniform sampler2D u_tex;
+uniform float u_depthScale;
+uniform float u_colorMode; // 0=texture, 1=depth heatmap
+varying vec2 v_uv;
+varying float v_bright;
+varying float v_depth;
+
+void main() {
+  v_uv = uv;
+  vec4 color = texture2D(u_tex, uv);
+  float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+  v_bright = brightness;
+  vec3 pos = position;
+  float d = (brightness - 0.5) * u_depthScale;
+  pos.z += d;
+  v_depth = (d / u_depthScale + 0.5);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  gl_PointSize = 3.5;
+}
+</script>
+
+<script id="fsh" type="x-shader/x-fragment">
+uniform sampler2D u_tex;
+uniform float u_colorMode;
+varying vec2 v_uv;
+varying float v_bright;
+varying float v_depth;
+
+vec3 heatmap(float t) {
+  vec3 a = vec3(0.0, 0.0, 0.5);
+  vec3 b = vec3(0.0, 0.8, 1.0);
+  vec3 c = vec3(0.2, 1.0, 0.2);
+  vec3 d = vec3(1.0, 0.8, 0.0);
+  vec3 e = vec3(1.0, 0.0, 0.0);
+  if(t < 0.25) return mix(a, b, t*4.0);
+  if(t < 0.5)  return mix(b, c, (t-0.25)*4.0);
+  if(t < 0.75) return mix(c, d, (t-0.5)*4.0);
+  return mix(d, e, (t-0.75)*4.0);
+}
+
+void main() {
+  if(length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
+  if(u_colorMode > 0.5) {
+    gl_FragColor = vec4(heatmap(v_depth), 1.0);
+  } else {
+    vec4 texColor = texture2D(u_tex, v_uv);
+    vec3 finalColor = texColor.rgb * (0.4 + v_bright * 0.7);
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+}
+</script>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+const S = {
+  ready: false,
+  mode: 'live', // 'live' | 'view'
+  wireframe: false,
+  colorMode: 0, // 0=texture 1=heatmap
+  autoRotate: false,
+  hasSnapshot: false,
+  depthScale: 2.0,
+  aiPanelOpen: false,
+  fps: 0,
+  lastFps: Date.now(),
+  frames: 0,
+};
+
+const GRID = 320;
+
+// ── THREE ──────────────────────────────────────────────────────────────────
+let scene, camera, renderer, controls;
+let video, videoTexture;
+let liveMesh, staticMesh;
+let snapshotImageData = null;
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+window.initApp = async () => {
+  document.getElementById('loader').style.opacity = '0';
+  document.getElementById('loader').style.transition = 'opacity 0.4s';
+  setTimeout(() => document.getElementById('loader').style.display = 'none', 400);
+
+  try {
+    await setupThree();
+    await setupCamera();
+    createLiveMesh();
+    animate();
+    S.ready = true;
+    notify('Система готова', 'success');
+  } catch(e) {
+    notify('Ошибка камеры: ' + e.message, 'info');
+    console.error(e);
+  }
+};
+
+function setupThree() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080808);
+
+  camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 4.5);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.domElement.className = 'three-canvas';
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.enabled = false; // only in view mode
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+async function setupCamera() {
+  video = document.getElementById('webcam');
+  const constraints = {
+    video: {
+      facingMode: 'environment',
+      width: { ideal: 1280 }, height: { ideal: 720 }
+    }
+  };
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = stream;
+  await new Promise(r => video.onloadedmetadata = r);
+
+  const track = stream.getVideoTracks()[0];
+  const settings = track.getSettings();
+  document.getElementById('tbMeta').textContent = `RES: ${settings.width}×${settings.height} | FPS: …`;
+
+  videoTexture = new THREE.VideoTexture(video);
+  videoTexture.minFilter = THREE.LinearFilter;
+  videoTexture.magFilter = THREE.LinearFilter;
+}
+
+function createLiveMesh() {
+  const geo = new THREE.PlaneGeometry(5.6, 3.5, GRID - 1, GRID - 1);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      u_tex: { value: videoTexture },
+      u_depthScale: { value: S.depthScale },
+      u_colorMode: { value: 0.0 },
+    },
+    vertexShader: document.getElementById('vsh').textContent,
+    fragmentShader: document.getElementById('fsh').textContent,
+  });
+  liveMesh = new THREE.Points(geo, mat);
+  scene.add(liveMesh);
+}
+
+// ── ANIMATE ────────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  // FPS counter
+  S.frames++;
+  const now = Date.now();
+  if (now - S.lastFps > 1000) {
+    S.fps = S.frames;
+    S.frames = 0;
+    S.lastFps = now;
+    document.getElementById('tbMeta').textContent =
+      `GRID: ${GRID}² | FPS: ${S.fps}`;
+  }
+
+  // Live histogram
+  if (S.mode === 'live' && video.readyState >= 2) drawHistogram();
+
+  renderer.render(scene, camera);
+}
+
+// ── HISTOGRAM ──────────────────────────────────────────────────────────────
+const hCtx = document.getElementById('histCanvas').getContext('2d');
+const pCanvas = document.getElementById('procCanvas');
+const pCtx = pCanvas.getContext('2d');
+let histTimer = 0;
+
+function drawHistogram() {
+  const now = Date.now();
+  if (now - histTimer < 200) return;
+  histTimer = now;
+
+  pCanvas.width = 64; pCanvas.height = 36;
+  pCtx.drawImage(video, 0, 0, 64, 36);
+  const data = pCtx.getImageData(0, 0, 64, 36).data;
+  const hist = new Float32Array(32).fill(0);
+  for (let i = 0; i < data.length; i += 4) {
+    const l = (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]) / 255;
+    hist[Math.min(31, Math.floor(l * 32))]++;
+  }
+  const max = Math.max(...hist);
+
+  hCtx.clearRect(0, 0, 110, 36);
+  for (let i = 0; i < 32; i++) {
+    const h = (hist[i] / max) * 34;
+    const x = i * (110/32);
+    const gradient = hCtx.createLinearGradient(0, 36, 0, 36 - h);
+    gradient.addColorStop(0, 'rgba(0,255,178,0.8)');
+    gradient.addColorStop(1, 'rgba(0,255,178,0.2)');
+    hCtx.fillStyle = gradient;
+    hCtx.fillRect(x, 36 - h, (110/32) - 1, h);
+  }
+}
+
+// ── SNAP ───────────────────────────────────────────────────────────────────
+window.captureSnap = () => {
+  if (!S.ready) return;
+
+  // Show scan animation
+  const so = document.getElementById('scan-overlay');
+  so.style.display = 'block';
+
+  setTimeout(() => {
+    so.style.display = 'none';
+    _buildStaticMesh();
+  }, 1800);
+
+  setStatus('SCANNING', 'processing');
+  notify('Захват снимка…', 'info');
+};
+
+function _buildStaticMesh() {
+  const RES = GRID;
+  pCanvas.width = RES; pCanvas.height = RES;
+  pCtx.drawImage(video, 0, 0, RES, RES);
+  snapshotImageData = pCtx.getImageData(0, 0, RES, RES);
+  const data = snapshotImageData.data;
+
+  if (staticMesh) { scene.remove(staticMesh); staticMesh.geometry.dispose(); staticMesh.material.dispose(); }
+
+  const geo = new THREE.PlaneGeometry(5.6, 3.5, RES - 1, RES - 1);
+  const pos = geo.attributes.position.array;
+  const colors = new Float32Array(pos.length);
+  const N = geo.attributes.position.count;
+
+  for (let i = 0; i < N; i++) {
+    const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+    const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+    pos[i*3+2] = (lum - 0.5) * S.depthScale;
+    colors[i*3]   = r / 255;
+    colors[i*3+1] = g / 255;
+    colors[i*3+2] = b / 255;
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.attributes.position.needsUpdate = true;
+  geo.computeVertexNormals();
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.036, vertexColors: true, depthTest: true
+  });
+  staticMesh = new THREE.Points(geo, mat);
+  staticMesh.visible = false;
+  scene.add(staticMesh);
+
+  S.hasSnapshot = true;
+  document.getElementById('btnExport').disabled = false;
+  document.getElementById('btnAIBtn').disabled = false;
+  document.getElementById('btnView').disabled = false;
+
+  notify('3D-слепок готов', 'success');
+  setStatus('SNAPSHOT READY', 'ready');
+
+  // Auto-switch to view
+  setTimeout(() => setMode('view'), 300);
+}
+
+// ── MODES ──────────────────────────────────────────────────────────────────
+window.setMode = (mode) => {
+  S.mode = mode;
+  if (mode === 'live') {
+    if (liveMesh) liveMesh.visible = true;
+    if (staticMesh) staticMesh.visible = false;
+    controls.enabled = false;
+    camera.position.set(0, 0, 4.5);
+    controls.target.set(0, 0, 0);
+    setStatus('LIVE', 'ready');
+    updateModeBadge('◉ LIVE STREAM', '');
+    document.getElementById('btnLive').classList.add('active');
+    document.getElementById('btnView').classList.remove('active');
+  } else {
+    if (!S.hasSnapshot) { notify('Сначала сделайте SNAP', 'info'); return; }
+    if (liveMesh) liveMesh.visible = false;
+    if (staticMesh) staticMesh.visible = true;
+    controls.enabled = true;
+    camera.position.set(1.2, 0.6, 4.2);
+    controls.target.set(0, 0, 0);
+    setStatus('3D VIEW', 'ready');
+    updateModeBadge('⬡ 3D SNAPSHOT', 'view-mode');
+    document.getElementById('btnView').classList.add('active');
+    document.getElementById('btnLive').classList.remove('active');
+  }
+};
+
+function updateModeBadge(text, cls) {
+  const b = document.getElementById('mode-badge');
+  b.textContent = text;
+  b.className = 'mode-badge';
+  if (cls) b.classList.add(cls);
+}
+
+// ── TOOLS ──────────────────────────────────────────────────────────────────
+window.toggleWireframe = () => {
+  S.wireframe = !S.wireframe;
+  document.getElementById('btnWire').classList.toggle('active', S.wireframe);
+  if (staticMesh) {
+    // rebuild as wireframe or points
+    notify(S.wireframe ? 'Wireframe ON' : 'Wireframe OFF', 'info');
+  }
+};
+
+window.toggleColorMode = () => {
+  S.colorMode = S.colorMode === 0 ? 1 : 0;
+  document.getElementById('btnColor').classList.toggle('active', S.colorMode === 1);
+  if (liveMesh) liveMesh.material.uniforms.u_colorMode.value = S.colorMode;
+  notify(S.colorMode === 1 ? 'Режим: Тепловая карта' : 'Режим: Текстура', 'info');
+};
+
+window.toggleAutoRotate = () => {
+  S.autoRotate = !S.autoRotate;
+  controls.autoRotate = S.autoRotate;
+  controls.autoRotateSpeed = 1.2;
+  document.getElementById('btnRotate').classList.toggle('active', S.autoRotate);
+  notify(S.autoRotate ? 'Авто-вращение ON' : 'Авто-вращение OFF', 'info');
+};
+
+window.onDepthChange = (val) => {
+  S.depthScale = parseFloat(val);
+  document.getElementById('depthVal').textContent = parseFloat(val).toFixed(1);
+  if (liveMesh) liveMesh.material.uniforms.u_depthScale.value = S.depthScale;
+};
+
+window.resetScene = () => {
+  setMode('live');
+  S.hasSnapshot = false;
+  S.colorMode = 0;
+  S.wireframe = false;
+  S.autoRotate = false;
+  controls.autoRotate = false;
+  if (liveMesh) liveMesh.material.uniforms.u_colorMode.value = 0;
+  if (staticMesh) { scene.remove(staticMesh); staticMesh = null; }
+  document.getElementById('btnExport').disabled = true;
+  document.getElementById('btnAIBtn').disabled = true;
+  document.getElementById('btnView').disabled = true;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btnLive').classList.add('active');
+  document.getElementById('ap-body').innerHTML = '<div class="ap-thinking">Сделайте снимок<br>для AI анализа<span class="dots"></span></div>';
+  snapshotImageData = null;
+  notify('Сцена сброшена', 'info');
+};
+
+// ── EXPORT ─────────────────────────────────────────────────────────────────
+window.exportSnapshot = () => {
+  if (!snapshotImageData) return;
+  renderer.render(scene, camera);
+  const dataURL = renderer.domElement.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = dataURL;
+  a.download = `myXYZ_${Date.now()}.png`;
+  a.click();
+  notify('PNG экспортирован', 'success');
+};
+
+// ── AI PANEL ──────────────────────────────────────────────────────────────
+window.toggleAIPanel = () => {
+  S.aiPanelOpen = !S.aiPanelOpen;
+  document.getElementById('ai-panel').classList.toggle('open', S.aiPanelOpen);
+  document.getElementById('btnAIPanel').classList.toggle('active', S.aiPanelOpen);
+};
+
+// ── AI ANALYSIS ───────────────────────────────────────────────────────────
+window.runAIAnalysis = async () => {
+  if (!S.hasSnapshot || !snapshotImageData) {
+    notify('Сначала сделайте SNAP', 'info');
+    return;
+  }
+
+  // Open panel
+  if (!S.aiPanelOpen) { S.aiPanelOpen = true; document.getElementById('ai-panel').classList.add('open'); }
+
+  document.getElementById('btnAI').classList.add('active');
+  document.getElementById('ap-body').innerHTML = `
+    <div class="ap-card shimmer" style="height:60px"></div>
+    <div class="ap-card shimmer" style="height:40px;margin-top:10px"></div>
+    <div class="ap-card shimmer" style="height:80px;margin-top:10px"></div>
+  `;
+  setStatus('AI АНАЛИЗ', 'processing');
+  notify('AI обрабатывает геометрию…', 'ai');
+
+  // Compute scene metrics from depth data
+  const metrics = computeSceneMetrics(snapshotImageData);
+
+  // Encode snapshot to base64
+  pCanvas.width = 512; pCanvas.height = 288;
+  pCtx.putImageData(snapshotImageData, 0, 0);
+  const b64 = pCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+  const prompt = `You are a computer vision AI analyzing a 3D depth reconstruction from a camera. 
+You receive an image frame used for shape-from-shading 3D reconstruction.
+
+Scene metrics computed:
+- Average luminance: ${metrics.avgLum.toFixed(3)}
+- Luminance variance: ${metrics.variance.toFixed(3)}  
+- Estimated depth range: ${metrics.depthRange.toFixed(2)} units
+- Highlight coverage: ${metrics.highlights}%
+- Shadow coverage: ${metrics.shadows}%
+- Contrast index: ${metrics.contrast.toFixed(2)}
+
+Analyze the image and respond ONLY with a valid JSON object (no markdown, no backticks):
+{
+  "subject": "detected subject in 1-3 words",
+  "description": "2-3 sentence analysis of the scene geometry and what you observe",
+  "surface_type": "flat|convex|concave|complex",
+  "lighting": "frontal|lateral|backlighting|diffuse",
+  "depth_quality": 0-100,
+  "detail_density": 0-100,
+  "tags": ["tag1","tag2","tag3","tag4"],
+  "recommendation": "one sentence tip for improving 3D capture quality"
+}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const raw = data.content?.find(b => b.type === 'text')?.text || '{}';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(clean);
+
+    renderAIPanel(result, metrics);
+    renderAIModal(result, metrics);
+
+    document.getElementById('btnAI').classList.remove('active');
+    setStatus('AI READY', 'ready');
+    notify('AI анализ завершён', 'ai');
+
+  } catch(e) {
+    document.getElementById('ap-body').innerHTML = `<div class="ap-thinking">Ошибка AI<br>${e.message}</div>`;
+    document.getElementById('btnAI').classList.remove('active');
+    setStatus('ERROR', 'ready');
+    notify('Ошибка AI: ' + e.message, 'info');
+  }
+};
+
+function computeSceneMetrics(imgData) {
+  const d = imgData.data;
+  let sum = 0, highlights = 0, shadows = 0;
+  const N = d.length / 4;
+  const lums = [];
+  for (let i = 0; i < d.length; i += 4) {
+    const l = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]) / 255;
+    sum += l; lums.push(l);
+    if (l > 0.75) highlights++;
+    if (l < 0.25) shadows++;
+  }
+  const avg = sum / N;
+  let variance = 0;
+  for (const l of lums) variance += (l - avg) ** 2;
+  variance /= N;
+  const contrast = Math.sqrt(variance);
+  return {
+    avgLum: avg,
+    variance,
+    contrast,
+    depthRange: contrast * 4,
+    highlights: Math.round(highlights / N * 100),
+    shadows: Math.round(shadows / N * 100)
+  };
+}
+
+function renderAIPanel(r, m) {
+  const tags = (r.tags || []).map(t => `<span class="ai-tag">${t}</span>`).join('');
+  document.getElementById('ap-body').innerHTML = `
+    <div class="ap-card">
+      <div class="ap-card-title">Объект</div>
+      <div class="ap-card-value highlight">${r.subject || '—'}</div>
     </div>
+    <div class="ap-card">
+      <div class="ap-card-title">Качество глубины</div>
+      <div class="ap-card-value">${r.depth_quality || 0}/100</div>
+      <div class="ap-bar"><div class="ap-bar-fill" style="width:${r.depth_quality || 0}%"></div></div>
+    </div>
+    <div class="ap-card">
+      <div class="ap-card-title">Детализация</div>
+      <div class="ap-card-value">${r.detail_density || 0}/100</div>
+      <div class="ap-bar"><div class="ap-bar-fill" style="width:${r.detail_density || 0}%"></div></div>
+    </div>
+    <div class="ap-card">
+      <div class="ap-card-title">Поверхность / Освещение</div>
+      <div class="ap-card-value">${r.surface_type || '—'} / ${r.lighting || '—'}</div>
+    </div>
+    <div class="ap-card">
+      <div class="ap-card-title">Теги</div>
+      <div class="ap-card-value">${tags}</div>
+    </div>
+    <div class="ap-card">
+      <div class="ap-card-title">Рекомендация</div>
+      <div class="ap-card-value" style="font-size:10px;line-height:1.7">${r.recommendation || '—'}</div>
+    </div>
+  `;
+}
 
-    <canvas id="procCanvas" style="display:none;"></canvas>
+function renderAIModal(r, m) {
+  const tags = (r.tags || []).map(t => `<span class="aim-tag">${t}</span>`).join('');
+  document.getElementById('aim-body').innerHTML = `
+    <div class="aim-section">
+      <div class="aim-section-title">Описание сцены</div>
+      <div class="aim-text">${r.description || '—'}</div>
+      <div class="aim-tags">${tags}</div>
+    </div>
+    <div class="aim-section">
+      <div class="aim-section-title">Метрики захвата</div>
+      <div class="aim-metric"><span class="aim-metric-name">Объект</span><span class="aim-metric-value">${r.subject || '—'}</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Тип поверхности</span><span class="aim-metric-value">${r.surface_type || '—'}</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Освещение</span><span class="aim-metric-value">${r.lighting || '—'}</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Качество глубины</span><span class="aim-metric-value">${r.depth_quality || 0}/100</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Детализация</span><span class="aim-metric-value">${r.detail_density || 0}/100</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Контраст</span><span class="aim-metric-value">${m.contrast.toFixed(2)}</span></div>
+      <div class="aim-metric"><span class="aim-metric-name">Засветка / тени</span><span class="aim-metric-value">${m.highlights}% / ${m.shadows}%</span></div>
+    </div>
+    <div class="aim-section">
+      <div class="aim-section-title">Рекомендация AI</div>
+      <div class="aim-text">${r.recommendation || '—'}</div>
+    </div>
+  `;
+  document.getElementById('ai-result').classList.add('show');
+}
 
-    <script id="vertexShader" type="x-shader/x-vertex">
-        uniform sampler2D u_tex;
-        uniform float u_depthScale;
-        varying vec2 v_uv;
-        varying float v_bright;
+window.closeAiResult = () => document.getElementById('ai-result').classList.remove('show');
 
-        void main() {
-            v_uv = uv; // Передаем UV координаты для текстуры
-            
-            // Считываем цвет пикселя с камеры
-            vec4 color = texture2D(u_tex, uv);
-            // Вычисляем яркость
-            float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-            v_bright = brightness;
+// ── STATUS / NOTIFY ────────────────────────────────────────────────────────
+function setStatus(text, type) {
+  const dot = document.getElementById('statusDot');
+  document.getElementById('statusText').textContent = text;
+  dot.className = 'status-dot';
+  if (type === 'processing') dot.classList.add('processing');
+  else if (type === 'ready') { /* default pulse */ }
+  else dot.classList.add('inactive');
+}
 
-            vec3 pos = position;
-            
-            // --- ЛОГИКА ВЫДАВЛИВАНИЯ (Shape from Shading) ---
-            // Яркие участки (свет) выдавливаются НА КАМЕРУ (Z+)
-            // Темные участки (тени) уходят НАЗАД (Z-)
-            pos.z += (brightness - 0.5) * u_depthScale;
+window.notify = function(msg, type = 'info') {
+  const container = document.getElementById('notif');
+  const el = document.createElement('div');
+  el.className = `notif-msg ${type}`;
+  const icon = type === 'success' ? '✓' : type === 'ai' ? '✦' : '·';
+  el.innerHTML = `<span>${icon}</span> ${msg}`;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.4s'; setTimeout(() => el.remove(), 400); }, 2500);
+};
 
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-            
-            // Размер точек для плотной заливки
-            gl_PointSize = 4.0; 
-        }
-    </script>
+// Expose setMode globally
+window.setMode = setMode;
+</script>
 
-    <script id="fragmentShader" type="x-shader/x-fragment">
-        uniform sampler2D u_tex;
-        varying vec2 v_uv;
-        varying float v_bright;
-
-        void main() {
-            // Круглая форма точки
-            if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-            
-            // Считываем реальный цвет из видеопотока по UV координатам
-            vec4 texColor = texture2D(u_tex, v_uv);
-            
-            // Смешиваем реальный цвет с яркостью для усиления объема
-            vec3 finalColor = texColor.rgb * (0.5 + v_bright * 0.5);
-            
-            gl_FragColor = vec4(finalColor, 1.0);
-        }
-    </script>
-
-    <script type="importmap">
-        { "imports": { 
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        } }
-    </script>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-        let scene, camera, renderer, controls, video, videoTexture;
-        let liveMesh, staticMesh;
-        
-        // ВЫСОКОЕ РАЗРЕШЕНИЕ ДЛЯ ПЛОТНОЙ ЗАЛИВКИ (как на фото)
-        const GRID_RES = 350; 
-        const DEPTH_SCALE = 2.0; // Сила объема
-
-        window.initApp = async () => {
-            document.getElementById('overlay').style.display = 'none';
-            setup();
-        };
-
-        function setup() {
-            scene = new THREE.Scene();
-            // Камера смотрит прямо на объект
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 4); 
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio); 
-            document.getElementById('container').appendChild(renderer.domElement);
-
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-
-            setupCamera().then(() => {
-                createLiveView();
-                setupUI();
-                animate();
-            });
-        }
-
-        async function setupCamera() {
-            video = document.getElementById('webcam');
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", width: 1280, height: 720 } // HD камера для текстур
-            });
-            video.srcObject = stream;
-            videoTexture = new THREE.VideoTexture(video);
-            // Улучшаем фильтрацию текстур
-            videoTexture.minFilter = THREE.LinearFilter;
-            videoTexture.magFilter = THREE.LinearFilter;
-        }
-
-        function createLiveView() {
-            // Создаем вертикальную плоскость перед камерой (как фотография)
-            const geo = new THREE.PlaneGeometry(5, 3.5, GRID_RES - 1, GRID_RES - 1);
-
-            const mat = new THREE.ShaderMaterial({
-                uniforms: { u_tex: { value: videoTexture }, u_depthScale: { value: DEPTH_SCALE } },
-                vertexShader: document.getElementById('vertexShader').textContent,
-                fragmentShader: document.getElementById('fragmentShader').textContent,
-                transparent: false, // Плотная заливка
-                depthTest: true
-            });
-            liveMesh = new THREE.Points(geo, mat);
-            scene.add(liveMesh);
-        }
-
-        function setupUI() {
-            const snapBtn = document.getElementById('snapBtn');
-            const viewBtn = document.getElementById('viewBtn');
-            const resBtn = document.getElementById('resetBtn');
-
-            resBtn.onclick = () => {
-                if (staticMesh) { scene.remove(staticMesh); staticMesh = null; }
-                liveMesh.visible = true;
-                camera.position.set(0, 0, 4);
-                controls.target.set(0, 0, 0);
-                viewBtn.disabled = true;
-                document.getElementById('info').innerText = "STATUS: LIVE STREAM";
-            };
-
-            snapBtn.onclick = () => {
-                captureSnapshot();
-                viewBtn.disabled = false;
-                alert("3D Снимок готов! Нажмите View.");
-            };
-
-            viewBtn.onclick = () => {
-                if (!staticMesh) return;
-                liveMesh.visible = !liveMesh.visible;
-                staticMesh.visible = !liveMesh.visible;
-                viewBtn.innerText = liveMesh.visible ? "View" : "Live";
-                document.getElementById('info').innerText = liveMesh.visible ? "STATUS: LIVE STREAM" : "STATUS: 3D SNAPSHOT";
-                
-                if (staticMesh.visible) {
-                    // Разворачиваем камеру чуть сбоку, чтобы сразу видеть объем
-                    camera.position.set(1.5, 0.5, 4);
-                    controls.target.set(0, 0, 0);
-                } else {
-                    camera.position.set(0, 0, 4);
-                    controls.target.set(0, 0, 0);
-                }
-            };
-        }
-
-        // Захват статики с реальной фото-текстурой
-        function captureSnapshot() {
-            const canvas = document.getElementById('procCanvas');
-            const ctx = canvas.getContext('2d');
-            // Используем GRID_RES для текстуры, чтобы она совпадала с сеткой
-            canvas.width = GRID_RES; canvas.height = GRID_RES;
-            ctx.drawImage(video, 0, 0, GRID_RES, GRID_RES);
-            const data = ctx.getImageData(0,0,GRID_RES,GRID_RES).data;
-
-            if (staticMesh) scene.remove(staticMesh);
-
-            const geo = new THREE.PlaneGeometry(5, 3.5, GRID_RES - 1, GRID_RES - 1);
-            const pos = geo.attributes.position.array;
-            const colors = new Float32Array(pos.length);
-
-            // CPU ОБРАБОТКА (Медленнее, но точнее для статики)
-            for (let i = 0; i < geo.attributes.position.count; i++) {
-                const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
-                const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
-                
-                // --- ЛОГИКА ВЫДАВЛИВАНИЯ НА CPU ---
-                pos[i * 3 + 2] = (lum - 0.5) * DEPTH_SCALE;
-
-                // --- НАЛОЖЕНИЕ РЕАЛЬНОГО ЦВЕТА ФОТО ---
-                colors[i*3] = r / 255; 
-                colors[i*3+1] = g / 255; 
-                colors[i*3+2] = b / 255;
-            }
-
-            // PointsMaterial использует vertexColors для отображения фото-текстуры
-            const mat = new THREE.PointsMaterial({ size: 0.04, vertexColors: true, depthTest: true });
-            staticMesh = new THREE.Points(geo, mat);
-            staticMesh.visible = false;
-            scene.add(staticMesh);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
 </body>
 </html>
