@@ -3,19 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>myXYZ | PRO Scanner</title>
+    <title>myXYZ | Volumetric Scanner</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@500;800&display=swap');
 
         :root {
-            --bg: #030303;
+            --bg: #050505;
+            --surface: #0d0d0d;
+            --surface2: #141414;
             --accent: #00ffb3;
-            --accent-dim: rgba(0, 255, 179, 0.15);
+            --accent-dim: rgba(0, 255, 179, 0.12);
+            --accent-glow: rgba(0, 255, 179, 0.35);
             --danger: #ff3c6e;
+            --warn: #ffb800;
             --text: #e0e0e0;
-            --border: rgba(255, 255, 255, 0.1);
-            --safe-top: env(safe-area-inset-top, 0px);
+            --text-dim: rgba(224, 224, 224, 0.38);
+            --border: rgba(255, 255, 255, 0.07);
+            --border-accent: rgba(0, 255, 179, 0.25);
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-sans: 'Syne', sans-serif;
+            --blur: blur(20px);
             --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-top: env(safe-area-inset-top, 0px);
+            --header-h: 56px;
+            --footer-h: 88px;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -23,150 +34,251 @@
         body, html {
             width: 100%; height: 100%; overflow: hidden;
             background: var(--bg); color: var(--text);
-            font-family: 'JetBrains Mono', monospace; font-size: 11px;
+            font-family: var(--font-mono); font-size: 12px;
+            user-select: none; touch-action: none;
         }
 
-        /* ─── UI ELEMENTS ─── */
+        /* ─── LOADER ─── */
         #loader {
             position: fixed; inset: 0; z-index: 1000; background: var(--bg);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            transition: 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .loader-logo { font-family: 'Syne', sans-serif; font-size: 64px; font-weight: 800; }
+        .loader-logo {
+            font-family: var(--font-sans); font-size: clamp(52px, 15vw, 72px);
+            font-weight: 800; letter-spacing: -3px; margin-bottom: 8px; line-height: 1;
+        }
         .loader-logo span { color: var(--accent); }
+        .loader-tag {
+            font-size: 10px; color: var(--text-dim); letter-spacing: 4px;
+            text-transform: uppercase; margin-bottom: 48px;
+        }
+        .loader-btn {
+            padding: 16px 52px; background: transparent; border: 1px solid var(--accent);
+            color: var(--accent); font-family: var(--font-mono); font-size: 11px;
+            text-transform: uppercase; letter-spacing: 5px; cursor: pointer;
+            transition: all 0.3s; border-radius: 2px; min-width: 200px;
+        }
+        .loader-btn:active { background: var(--accent); color: var(--bg); transform: scale(0.98); }
 
+        /* ─── HEADER ─── */
         header {
             position: fixed; top: 0; left: 0; right: 0;
-            padding: calc(var(--safe-top) + 15px) 20px 15px;
-            display: flex; align-items: flex-start; justify-content: space-between;
-            z-index: 50; pointer-events: none;
+            height: calc(var(--header-h) + var(--safe-top));
+            padding-top: var(--safe-top);
+            display: flex; align-items: center; justify-content: space-between;
+            padding-left: 16px; padding-right: 16px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(5, 5, 5, 0.75); backdrop-filter: var(--blur); z-index: 20;
         }
-        .sys-log { line-height: 1.4; opacity: 0.6; text-transform: uppercase; font-size: 9px; }
+        .logo { font-family: var(--font-sans); font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+        .logo span { color: var(--accent); }
 
-        /* ─── CANVAS ─── */
-        #container { position: fixed; inset: 0; background: #000; }
-        video { position: absolute; opacity: 0; pointer-events: none; }
+        .sys-status { display: flex; align-items: center; gap: 8px; font-size: 9px; letter-spacing: 2px; }
+        .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
+        .dot.pulse { animation: pulse 2s infinite; }
+        .dot.busy { background: var(--warn); box-shadow: 0 0 8px var(--warn); animation: pulse 0.6s infinite; }
 
-        /* ─── CONTROLS ─── */
-        .side-bar {
-            position: fixed; right: 15px; top: 50%; transform: translateY(-50%);
-            display: flex; flex-direction: column; gap: 15px; z-index: 40;
+        .meta-info { font-size: 9px; color: var(--text-dim); text-align: right; line-height: 1.6; }
+
+        /* ─── CONTAINER ─── */
+        #container {
+            position: fixed; inset: 0;
+            top: calc(var(--header-h) + var(--safe-top));
+            bottom: calc(var(--footer-h) + var(--safe-bottom));
+            background: #000;
         }
-        .ctrl-btn {
-            width: 48px; height: 48px; border: 1px solid var(--border);
-            background: rgba(10,10,10,0.8); border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            color: var(--text); backdrop-filter: blur(10px); transition: 0.3s;
+        canvas { width: 100%; height: 100%; display: block; }
+        video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+        /* ─── TOOLBAR & CONTROLS ─── */
+        .toolbar {
+            position: fixed; left: 12px;
+            bottom: calc(var(--footer-h) + var(--safe-bottom) + 12px);
+            display: flex; flex-direction: column; gap: 8px; z-index: 15;
         }
-        .ctrl-btn.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 15px var(--accent-dim); }
-        .ctrl-btn svg { width: 22px; height: 22px; }
+        .tool-btn {
+            width: 46px; height: 46px; border: 1px solid var(--border);
+            background: rgba(13,13,13,0.9); color: var(--text-dim);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            border-radius: 12px; transition: all 0.2s; backdrop-filter: var(--blur);
+            position: relative;
+        }
+        .tool-btn.active { color: var(--accent); border-color: var(--border-accent); background: var(--accent-dim); }
+        .tool-btn svg { width: 20px; height: 20px; stroke-width: 2px; }
+        .badge {
+            position: absolute; top: 0; right: 0; width: 8px; height: 8px;
+            background: var(--accent); border-radius: 50%; display: none;
+        }
+        .badge.visible { display: block; }
 
         /* ─── DEPTH SLIDER ─── */
-        .depth-box {
-            position: fixed; left: 15px; top: 50%; transform: translateY(-50%);
-            height: 250px; width: 40px; z-index: 40;
-            display: flex; flex-direction: column; align-items: center;
+        .depth-ctrl {
+            position: fixed; right: 12px;
+            bottom: calc(var(--footer-h) + var(--safe-bottom) + 12px);
+            z-index: 15; display: flex; flex-direction: column; align-items: center; gap: 6px;
         }
-        .track {
-            flex: 1; width: 4px; background: var(--border); border-radius: 2px;
-            position: relative; margin: 15px 0;
+        .depth-track-wrap {
+            width: 40px; height: 160px;
+            background: rgba(13,13,13,0.9); border: 1px solid var(--border);
+            border-radius: 20px; position: relative; touch-action: none;
         }
-        .fill { position: absolute; bottom: 0; width: 100%; background: var(--accent); border-radius: 2px; }
-        .handle {
-            position: absolute; left: 50%; transform: translate(-50%, 50%);
-            width: 32px; height: 32px; background: #fff; border-radius: 6px;
-            display: flex; align-items: center; justify-content: center; color: #000;
-            font-weight: 700; font-size: 9px; touch-action: none;
+        .depth-fill {
+            position: absolute; bottom: 4px; left: 4px; right: 4px;
+            background: var(--accent-dim); border-radius: 16px; transition: height 0.1s;
         }
+        .depth-thumb {
+            position: absolute; left: 50%; transform: translateX(-50%);
+            width: 32px; height: 32px; background: var(--accent);
+            border-radius: 50%; box-shadow: 0 0 15px var(--accent-glow);
+            pointer-events: none;
+        }
+        .depth-val { font-size: 11px; color: var(--accent); font-weight: 700; text-shadow: 0 0 5px var(--accent-glow); }
 
         /* ─── FOOTER ─── */
         footer {
             position: fixed; bottom: 0; left: 0; right: 0;
-            padding-bottom: calc(var(--safe-bottom) + 20px);
-            display: flex; justify-content: center; align-items: center;
-            gap: 30px; z-index: 50;
+            height: calc(var(--footer-h) + var(--safe-bottom));
+            padding-bottom: var(--safe-bottom);
+            display: flex; align-items: center; justify-content: space-between;
+            padding-left: 16px; padding-right: 16px;
+            background: rgba(5, 5, 5, 0.85); backdrop-filter: var(--blur);
+            border-top: 1px solid var(--border); z-index: 20;
         }
-        .main-trigger {
-            width: 70px; height: 70px; border-radius: 50%;
-            background: #fff; border: 4px solid var(--bg);
-            box-shadow: 0 0 0 4px #fff; cursor: pointer; transition: 0.2s;
+        .snap-btn {
+            flex: 1; max-width: 220px; height: 56px; margin: 0 10px;
+            background: var(--accent); color: var(--bg);
+            border: none; border-radius: 28px; font-family: var(--font-mono);
+            font-weight: 700; font-size: 11px; letter-spacing: 2px;
+            cursor: pointer; transition: all 0.2s;
         }
-        .main-trigger:active { transform: scale(0.9); }
-        .main-trigger.rec { background: var(--danger); box-shadow: 0 0 0 4px var(--danger); }
+        .snap-btn:active { transform: scale(0.96); box-shadow: 0 0 30px var(--accent-glow); }
+        .snap-btn.scanning { background: var(--warn); pointer-events: none; }
 
+        .footer-action {
+            width: 46px; height: 46px; border: 1px solid var(--border);
+            background: transparent; color: var(--text-dim);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ─── MODE PILL ─── */
         .mode-pill {
-            background: rgba(20,20,20,0.8); border: 1px solid var(--border);
-            padding: 5px; border-radius: 30px; display: flex; backdrop-filter: blur(10px);
+            position: fixed; top: calc(var(--header-h) + var(--safe-top) + 16px);
+            left: 50%; transform: translateX(-50%);
+            display: flex; background: rgba(13,13,13,0.9);
+            border: 1px solid var(--border); border-radius: 24px;
+            backdrop-filter: var(--blur); z-index: 15; padding: 4px;
         }
-        .m-tab {
-            padding: 8px 16px; border-radius: 25px; font-size: 10px; font-weight: 700;
-            color: rgba(255,255,255,0.4); border: none; background: none;
+        .mode-btn {
+            padding: 8px 18px; font-size: 9px; letter-spacing: 1px;
+            border: none; background: transparent; color: var(--text-dim);
+            border-radius: 20px; cursor: pointer; transition: 0.2s;
         }
-        .m-tab.active { background: var(--accent); color: var(--bg); }
+        .mode-btn.active { background: var(--accent); color: var(--bg); }
 
-        /* ─── HUD FX ─── */
-        #glitch-overlay {
-            position: fixed; inset: 0; pointer-events: none; z-index: 60;
-            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, transparent 1px, transparent 2px);
-            display: none;
+        /* ─── NOTIFICATIONS ─── */
+        #notifications {
+            position: fixed; top: calc(var(--header-h) + var(--safe-top) + 10px);
+            left: 50%; transform: translateX(-50%);
+            z-index: 100; display: flex; flex-direction: column; gap: 8px; width: 280px;
         }
         .toast {
-            position: fixed; top: 100px; left: 50%; transform: translateX(-50%);
-            background: var(--accent); color: var(--bg); padding: 5px 12px;
-            font-weight: 700; font-size: 10px; border-radius: 2px;
-            opacity: 0; transition: 0.3s; z-index: 100;
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 3px solid var(--accent); padding: 12px;
+            border-radius: 8px; font-size: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: slideIn 0.3s ease-out;
         }
+        @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        /* ─── BOTTOM SHEET ─── */
+        .sheet-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 30; display: none; backdrop-filter: blur(4px);
+        }
+        .bottom-sheet {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--surface); border-radius: 24px 24px 0 0;
+            z-index: 40; transform: translateY(100%); transition: 0.4s cubic-bezier(0.1, 0.9, 0.2, 1);
+            max-height: 70vh; padding-bottom: var(--safe-bottom);
+        }
+        .bottom-sheet.open { transform: translateY(0); }
+        .sheet-content { padding: 24px; overflow-y: auto; max-height: 60vh; }
+        .ai-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+        .ai-card label { color: var(--accent); font-size: 8px; text-transform: uppercase; margin-bottom: 8px; display: block; }
+        .ai-card p { line-height: 1.6; font-size: 11px; }
+
+        /* ─── SCANNER FX ─── */
+        #scanner-fx {
+            position: fixed; inset: 0; top: var(--header-h); bottom: var(--footer-h);
+            border: 2px solid var(--accent); pointer-events: none; display: none; z-index: 25;
+        }
+        .scan-line {
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: var(--accent); box-shadow: 0 0 20px var(--accent);
+            animation: scanMove 1.5s linear infinite;
+        }
+        @keyframes scanMove { from { top: 0%; } to { top: 100%; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     </style>
 </head>
 <body>
 
 <div id="loader">
     <div class="loader-logo">my<span>XYZ</span></div>
-    <div style="font-size: 10px; letter-spacing: 5px; opacity: 0.5; margin-top: 10px;">NEURAL TOPOGRAPHY</div>
-    <button onclick="boot()" style="margin-top: 40px; padding: 15px 40px; background: none; border: 1px solid var(--accent); color: var(--accent); font-family: inherit; letter-spacing: 3px; border-radius: 4px;">INITIALIZE</button>
+    <div class="loader-tag">v.3.0 neural scanning</div>
+    <button class="loader-btn" onclick="initApp()">ИНИЦИАЛИЗАЦИЯ</button>
 </div>
 
 <header>
-    <div class="sys-log">
-        Status: <span id="st">Idle</span><br>
-        Resolution: 256x256<br>
-        Buffer: <span id="bf">0.0mb</span>
+    <div class="logo">my<span>XYZ</span></div>
+    <div class="sys-status">
+        <div class="dot pulse" id="status-dot"></div>
+        <span id="status-text">ONLINE</span>
     </div>
-    <div class="sys-log" style="text-align: right;">
-        FPS: <span id="fps">60</span><br>
-        Engine: Three.js r160
+    <div class="meta-info">
+        <span id="fps-val">60</span> FPS<br><span id="pts-val">160</span>K PTS
     </div>
 </header>
 
-<div class="depth-box">
-    <div style="font-size: 9px; opacity: 0.5;">DIST</div>
-    <div class="track" id="z-track">
-        <div class="fill" id="z-fill" style="height: 20%;"></div>
-        <div class="handle" id="z-handle" style="bottom: 20%;">1.2</div>
-    </div>
-    <div style="font-size: 9px; opacity: 0.5;">0.0</div>
+<div class="mode-pill">
+    <button class="mode-btn active" id="mode-live" onclick="setMode('live')">ЭФИР</button>
+    <button class="mode-btn" id="mode-view" onclick="setMode('view')">3D</button>
+    <button class="mode-btn" id="mode-measure" onclick="setMode('measure')">МЕРА</button>
 </div>
 
-<div class="side-bar">
-    <button class="ctrl-btn" id="c-mesh" onclick="toggleMode('mesh')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></button>
-    <button class="ctrl-btn" id="c-heat" onclick="toggleMode('heat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="M9 18l3 3 3-3"/></svg></button>
-    <button class="ctrl-btn" id="c-wire" onclick="toggleMode('wire')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
+<div class="toolbar">
+    <button class="tool-btn" id="btn-heat" onclick="toggleHeatmap()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></button>
+    <button class="tool-btn" id="btn-wire" onclick="toggleWireframe()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></button>
+    <button class="tool-btn" id="btn-ai" onclick="toggleAi()"><div class="badge" id="ai-badge"></div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></button>
 </div>
+
+<div class="depth-ctrl">
+    <span class="depth-val" id="depth-val">1.5</span>
+    <div class="depth-track-wrap" id="depth-track">
+        <div class="depth-fill" id="depth-fill"></div>
+        <div class="depth-thumb" id="depth-thumb"></div>
+    </div>
+</div>
+
+<div id="scanner-fx"><div class="scan-line"></div></div>
 
 <div id="container"></div>
-<div id="glitch-overlay"></div>
-<div class="toast" id="toast">SCAN COMPLETE</div>
+
+<div class="sheet-overlay" id="overlay" onclick="toggleAi()"></div>
+<div class="bottom-sheet" id="ai-sheet">
+    <div class="sheet-content" id="ai-content">
+        <div class="ai-card"><label>Статус</label><p>Ожидание захвата данных для нейронного анализа...</p></div>
+    </div>
+</div>
 
 <footer>
-    <div class="mode-pill">
-        <button class="m-tab active" id="m-live" onclick="setView('live')">LIVE</button>
-        <button class="m-tab" id="m-3d" onclick="setView('3d')">3D CLOUD</button>
-    </div>
-    <button class="main-trigger" id="shutter" onclick="capture()"></button>
-    <button class="ctrl-btn" onclick="exportIMG()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>
+    <button class="footer-action" onclick="location.reload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+    <button class="snap-btn" id="snap-btn" onclick="takeSnapshot()">ЗАХВАТ ОБЪЁМА</button>
+    <button class="footer-action" id="dl-btn" onclick="downloadImage()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
 </footer>
 
-<video id="v" autoplay playsinline></video>
+<div id="notifications"></div>
+<video id="vid" autoplay playsinline></video>
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -177,60 +289,72 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 let scene, camera, renderer, controls, video, videoTex;
-let points, mesh;
-let state = { z: 1.2, mesh: false, heat: false, wire: false, view: 'live' };
+let liveMesh, snapMesh;
+let currentMode = 'live';
+let depth = 1.5;
+let heatmap = false, wireframe = false;
+let ptsCount = 400;
 
+// ─── SHADERS ─────────────────────────────────────────────────────────────────
 const _VS = `
     varying vec2 vUv;
-    varying float vD;
-    uniform sampler2D t;
-    uniform float uZ;
+    varying float vZ;
+    uniform sampler2D tDiffuse;
+    uniform float uDepth;
     void main() {
         vUv = uv;
-        vec4 tex = texture2D(t, uv);
-        vD = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 p = position;
-        p.z += vD * uZ;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-        gl_PointSize = uZ > 0.0 ? (2.0 + vD * 4.0) : 2.0;
+        vec4 tex = texture2D(tDiffuse, uv);
+        float brightness = dot(tex.rgb, vec3(0.299, 0.587, 0.114));
+        vZ = brightness;
+        vec3 pos = position;
+        pos.z += (brightness - 0.5) * uDepth;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = 2.0;
     }
 `;
 
 const _FS = `
     varying vec2 vUv;
-    varying float vD;
-    uniform sampler2D t;
-    uniform bool uH; uniform bool uW;
+    varying float vZ;
+    uniform sampler2D tDiffuse;
+    uniform bool uHeat;
+    uniform bool uWire;
+    
+    vec3 getHeat(float v) {
+        vec3 c = mix(vec3(0,0,1), vec3(0,1,0), smoothstep(0.0, 0.5, v));
+        return mix(c, vec3(1,0,0), smoothstep(0.5, 1.0, v));
+    }
+
     void main() {
-        vec4 tex = texture2D(t, vUv);
-        vec3 c = tex.rgb;
-        if(uH) {
-            c = mix(vec3(0,0.1,0.5), vec3(0,1,0.4), vD);
-            c = mix(c, vec3(1,0,0.2), smoothstep(0.5, 1.0, vD));
+        vec4 tex = texture2D(tDiffuse, vUv);
+        if(uHeat) {
+            gl_FragColor = vec4(getHeat(vZ), 1.0);
+        } else if(uWire) {
+            gl_FragColor = vec4(0.0, 1.0, 0.7, 1.0);
+        } else {
+            gl_FragColor = vec4(tex.rgb, 1.0);
         }
-        if(uW) {
-            float line = step(0.97, fract(vUv.x * 64.0)) + step(0.97, fract(vUv.y * 64.0));
-            c += line * vec3(0, 1.0, 0.7);
-        }
-        gl_FragColor = vec4(c, 1.0);
     }
 `;
 
-window.boot = async () => {
-    document.getElementById('loader').style.opacity = '0';
-    setTimeout(() => document.getElementById('loader').remove(), 800);
+// ─── INIT ────────────────────────────────────────────────────────────────────
+window.initApp = async () => {
+    document.getElementById('loader').style.opacity = 0;
+    setTimeout(() => document.getElementById('loader').remove(), 700);
 
-    video = document.getElementById('v');
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 640, height: 640 } });
+    video = document.getElementById('vid');
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment', width: 1024, height: 1024 } 
+    });
     video.srcObject = stream;
 
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 10);
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('container').appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
@@ -238,22 +362,24 @@ window.boot = async () => {
     controls.enableDamping = true;
 
     videoTex = new THREE.VideoTexture(video);
-    const geo = new THREE.PlaneGeometry(12, 12, 200, 200);
+    
+    const geo = new THREE.PlaneGeometry(8, 8, ptsCount, ptsCount);
     const mat = new THREE.ShaderMaterial({
-        uniforms: { t: { value: videoTex }, uZ: { value: state.z }, uH: { value: false }, uW: { value: false } },
+        uniforms: {
+            tDiffuse: { value: videoTex },
+            uDepth: { value: depth },
+            uHeat: { value: heatmap },
+            uWire: { value: wireframe }
+        },
         vertexShader: _VS, fragmentShader: _FS, transparent: true
     });
 
-    points = new THREE.Points(geo, mat);
-    mesh = new THREE.Mesh(geo, mat.clone());
-    mesh.material.side = THREE.DoubleSide;
-    mesh.visible = false;
-    
-    scene.add(points, mesh);
-    
-    initDepth();
+    liveMesh = new THREE.Points(geo, mat);
+    scene.add(liveMesh);
+
+    initDepthSlider();
     animate();
-    document.getElementById('st').innerText = 'Active';
+    showToast("Сенсоры активны", "success");
 };
 
 function animate() {
@@ -262,90 +388,129 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// ─── HANDLERS ────────────────────────────────────────────────────────
+// ─── DEPTH SLIDER LOGIC ───────────────────────────────────────────────────────
+function initDepthSlider() {
+    const track = document.getElementById('depth-track');
+    const thumb = document.getElementById('depth-thumb');
+    const fill = document.getElementById('depth-fill');
+    const valEl = document.getElementById('depth-val');
 
-window.toggleMode = (m) => {
-    state[m] = !state[m];
-    document.getElementById('c-'+m).classList.toggle('active', state[m]);
+    const update = (clientY) => {
+        const rect = track.getBoundingClientRect();
+        let p = 1 - (clientY - rect.top) / rect.height;
+        p = Math.max(0, Math.min(1, p));
+        
+        depth = p * 10;
+        valEl.innerText = depth.toFixed(1);
+        fill.style.height = (p * 100) + '%';
+        thumb.style.bottom = `calc(${p * 100}% - 16px)`;
+        
+        if(liveMesh) liveMesh.material.uniforms.uDepth.value = depth;
+        if(snapMesh) snapMesh.material.uniforms.uDepth.value = depth;
+    };
+
+    track.addEventListener('touchstart', (e) => update(e.touches[0].clientY));
+    track.addEventListener('touchmove', (e) => { e.preventDefault(); update(e.touches[0].clientY); });
     
-    if(m === 'mesh') {
-        points.visible = !state.mesh;
-        mesh.visible = state.mesh;
-    } else {
-        const key = 'u' + m.charAt(0).toUpperCase();
-        points.material.uniforms[key].value = state[m];
-        mesh.material.uniforms[key].value = state[m];
+    // Initial pos
+    update(track.getBoundingClientRect().bottom - (1.5 / 10) * track.getBoundingClientRect().height);
+}
+
+// ─── MODES & ACTIONS ──────────────────────────────────────────────────────────
+window.setMode = (m) => {
+    currentMode = m;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('mode-'+m).classList.add('active');
+    
+    controls.enabled = (m !== 'live');
+    if(m === 'live') {
+        camera.position.set(0,0,5); camera.lookAt(0,0,0);
+        if(snapMesh) snapMesh.visible = false;
+        liveMesh.visible = true;
+    } else if(snapMesh) {
+        liveMesh.visible = false;
+        snapMesh.visible = true;
     }
+    
+    if(m === 'measure') showToast("Режим замеров: тапните по облаку");
 };
 
-window.setView = (v) => {
-    state.view = v;
-    document.querySelectorAll('.m-tab').forEach(t => t.classList.toggle('active', t.id === 'm-'+v));
-    controls.enabled = (v === '3d');
-    if(v === 'live') {
-        camera.position.set(0, 0, 10);
-        camera.lookAt(0,0,0);
-        points.material.uniforms.t.value = videoTex;
-        mesh.material.uniforms.t.value = videoTex;
-    }
-};
-
-window.capture = async () => {
-    const shutter = document.getElementById('shutter');
-    const glitch = document.getElementById('glitch-overlay');
+window.takeSnapshot = async () => {
+    const btn = document.getElementById('snap-btn');
+    const fx = document.getElementById('scanner-fx');
     
-    shutter.classList.add('rec');
-    glitch.style.display = 'block';
+    btn.classList.add('scanning');
+    btn.innerText = "СКАНИРОВАНИЕ...";
+    fx.style.display = 'block';
     
-    await new Promise(r => setTimeout(r, 600));
-
+    await new Promise(r => setTimeout(r, 1500));
+    
+    // Capture texture
     const canvas = document.createElement('canvas');
     canvas.width = 1024; canvas.height = 1024;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const snapshot = new THREE.CanvasTexture(canvas);
-
-    points.material.uniforms.t.value = snapshot;
-    mesh.material.uniforms.t.value = snapshot;
+    const tex = new THREE.CanvasTexture(canvas);
     
-    shutter.classList.remove('rec');
-    glitch.style.display = 'none';
-    setView('3d');
+    if(snapMesh) scene.remove(snapMesh);
     
-    const toast = document.getElementById('toast');
-    toast.style.opacity = 1;
-    setTimeout(() => toast.style.opacity = 0, 2000);
+    const mat = liveMesh.material.clone();
+    mat.uniforms.tDiffuse.value = tex;
+    snapMesh = new THREE.Points(liveMesh.geometry.clone(), mat);
+    scene.add(snapMesh);
+    
+    setMode('view');
+    btn.classList.remove('scanning');
+    btn.innerText = "ЗАХВАТ ОБЪЁМА";
+    fx.style.display = 'none';
+    
+    showToast("Объект зафиксирован", "success");
+    simulateAi(canvas);
 };
 
-function initDepth() {
-    const handle = document.getElementById('z-handle');
-    const track = document.getElementById('z-track');
-    const fill = document.getElementById('z-fill');
-
-    const update = (y) => {
-        const rect = track.getBoundingClientRect();
-        let p = 1 - (y - rect.top) / rect.height;
-        p = Math.max(0, Math.min(1, p));
-        
-        state.z = p * 10;
-        handle.style.bottom = (p * 100) + '%';
-        fill.style.height = (p * 100) + '%';
-        handle.innerText = state.z.toFixed(1);
-        
-        points.material.uniforms.uZ.value = state.z;
-        mesh.material.uniforms.uZ.value = state.z;
-    };
-
-    handle.addEventListener('touchstart', (e) => {
-        const move = (ev) => { update(ev.touches[0].clientY); ev.preventDefault(); };
-        window.addEventListener('touchmove', move, { passive: false });
-        window.addEventListener('touchend', () => window.removeEventListener('touchmove', move), { once: true });
-    });
+function simulateAi(canvas) {
+    const badge = document.getElementById('ai-badge');
+    badge.classList.add('visible');
+    
+    document.getElementById('ai-content').innerHTML = `
+        <div class="ai-card"><label>Объект</label><p>Обнаружена сложная поверхность. Вероятный тип: "Интерьер/Макро".</p></div>
+        <div class="ai-card"><label>Геометрия</label><p>Высокая детализация. Рекомендуется увеличить ГЛУБИНУ до 4.5 для анализа микрорельефа.</p></div>
+        <div class="ai-card"><label>Свет</label><p>Оптимально. Шумы в тенях подавлены программно.</p></div>
+    `;
 }
 
-window.exportIMG = () => {
+window.toggleHeatmap = () => {
+    heatmap = !heatmap;
+    document.getElementById('btn-heat').classList.toggle('active', heatmap);
+    [liveMesh, snapMesh].forEach(m => { if(m) m.material.uniforms.uHeat.value = heatmap; });
+};
+
+window.toggleWireframe = () => {
+    wireframe = !wireframe;
+    document.getElementById('btn-wire').classList.toggle('active', wireframe);
+    [liveMesh, snapMesh].forEach(m => { if(m) m.material.uniforms.uWire.value = wireframe; });
+};
+
+window.toggleAi = () => {
+    const s = document.getElementById('ai-sheet');
+    const o = document.getElementById('overlay');
+    s.classList.toggle('open');
+    o.style.display = s.classList.contains('open') ? 'block' : 'none';
+};
+
+window.showToast = (msg, type) => {
+    const c = document.getElementById('notifications');
+    const t = document.createElement('div');
+    t.className = 'toast';
+    if(type === 'success') t.style.borderLeftColor = '#00ffb3';
+    t.innerText = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+};
+
+window.downloadImage = () => {
     renderer.render(scene, camera);
     const link = document.createElement('a');
-    link.download = `XYZ_DATA_${Date.now()}.png`;
+    link.download = `myXYZ_${Date.now()}.png`;
     link.href = renderer.domElement.toDataURL();
     link.click();
 };
