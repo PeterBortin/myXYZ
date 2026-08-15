@@ -317,6 +317,39 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
 .src.luma{color:var(--warn);border-color:rgba(255,184,0,.3)}
 .empty{color:var(--text-3);font-size:var(--fs-cap);line-height:1.8;text-align:center;padding:var(--s5) var(--s3)}
 
+
+/* ── ПЕНЗЕЛЬ ────────────────────────────────────────────────────────── */
+.brushbar{
+  position:fixed;z-index:var(--z-rail);left:50%;transform:translateX(-50%);
+  bottom:calc(var(--foot-h) + var(--safe-b) + var(--s2));
+  width:min(420px,92vw);padding:var(--s2);display:none;flex-direction:column;gap:var(--s2);
+  background:rgba(11,14,15,.94);border:1px solid var(--line-2);border-radius:var(--r-m);
+  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:var(--sh-2);
+}
+.brushbar.on{display:flex}
+.bb-row{display:flex;align-items:center;gap:var(--s2)}
+.bb-row label{font-size:var(--fs-cap);color:var(--text-3);flex:none}
+.bb-row input[type=range]{flex:1;min-width:40px}
+.bb-row output{font-size:var(--fs-micro);color:var(--accent);width:26px;text-align:right;flex:none}
+.bb-x{flex:none;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r-s);
+  font-size:var(--fs-micro);color:var(--text-3)}
+.bb-x:active{background:var(--surface-2)}
+#brushCursor{position:fixed;z-index:var(--z-rail);pointer-events:none;display:none;
+  border:1px solid var(--accent);border-radius:50%;box-shadow:0 0 12px var(--accent-glow) inset}
+#brushCursor.on{display:block}
+
+/* ── КРИВА ──────────────────────────────────────────────────────────── */
+#curveCv{width:100%;height:150px;display:block;border:1px solid var(--line);
+  border-radius:var(--r-s);background:var(--bg);touch-action:none;margin-bottom:var(--s3)}
+
+/* ── ЛОГ МОДЕЛІ ─────────────────────────────────────────────────────── */
+.log{background:#07090a;border:1px solid var(--line);border-radius:var(--r-s);
+  padding:10px;font-size:var(--fs-micro);line-height:1.75;color:var(--text-3);
+  max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.log b{color:var(--accent);font-weight:400}
+.log i{color:var(--danger);font-style:normal}
+.log u{color:var(--warn);text-decoration:none}
+
 /* ── МІРА ───────────────────────────────────────────────────────────── */
 #ruler{position:fixed;z-index:var(--z-rail);inset:0;pointer-events:none}
 #ruler line{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:5 4}
@@ -356,10 +389,23 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
   <button class="tool" id="tGeom" title="Точки / меш"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="1.4"/><circle cx="12" cy="6" r="1.4"/><circle cx="18" cy="6" r="1.4"/><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/><circle cx="6" cy="18" r="1.4"/><circle cx="12" cy="18" r="1.4"/><circle cx="18" cy="18" r="1.4"/></svg><span class="tag" id="tagGeom">ТЧК</span></button>
   <button class="tool" id="tPal" title="Палітра"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.7 1.6-1.5 0-1.4-1.2-1.6-1.2-2.6 0-.8.7-1.4 1.5-1.4H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="11" cy="7.5" r="1.2"/><circle cx="15.5" cy="8.5" r="1.2"/></svg><span class="tag" id="tagPal">RGB</span></button>
   <button class="tool" id="tCfg" title="Параметри"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></button>
+  <button class="tool" id="tBrush" title="Пензель по глибині"><svg viewBox="0 0 24 24"><path d="M9.5 14.5 4 20l5.5-1.5z"/><path d="M12 17 7 12 17.5 3.5a2.1 2.1 0 0 1 3 3L12 17z"/></svg><span class="tag" id="tagBrush">ПНЗ</span></button>
   <button class="tool" id="tAn" title="Аналіз кадру"><i class="dot" id="anDot"></i><svg viewBox="0 0 24 24"><path d="M4 19V9M9 19V5M14 19v-7M19 19v-4"/></svg></button>
 </div>
 
 <div id="hint"></div>
+
+<div class="brushbar" id="brushBar">
+  <div class="seg" id="segBMode">
+    <button data-v="push">Тягти</button><button data-v="pull">Товкти</button>
+    <button data-v="smooth">Гладь</button><button data-v="flat">Пласко</button>
+  </div>
+  <div class="bb-row">
+    <label>Р</label><input type="range" id="rBR" min="0.02" max="0.35" step="0.01" value="0.09"><output id="oBR">.09</output>
+    <label>С</label><input type="range" id="rBS" min="0.05" max="1" step="0.05" value="0.5"><output id="oBS">.50</output>
+    <button class="bb-x" id="bReset2">Скинути правки</button>
+  </div>
+</div>
 
 <div class="dwin">
   <div class="dwin-head">ВІКНО</div>
@@ -374,6 +420,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
 
 <div id="fx"></div>
 <svg id="ruler" class="hide"></svg>
+<div id="brushCursor"></div>
 
 <footer>
   <button class="fbtn" id="bReset" title="Скинути"><svg viewBox="0 0 24 24"><path d="M22 5v6h-6"/><path d="M19.6 15.5A8.5 8.5 0 1 1 17.8 6.4L22 10"/></svg></button>
@@ -394,6 +441,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
 
   <div class="pane" id="paneCfg">
     <div class="grp">
+      <h4>Крива глибини <em>перетягни точки</em></h4>
+      <canvas id="curveCv" width="600" height="300"></canvas>
+      <button class="act" id="curveRst">Скинути криву <b>45°</b></button>
+      <div class="note"><i></i><span>Горизонталь — глибина як її віддала модель, вертикаль — як вона ляже в сцену. Підняти середину = розтягнути обʼєм там, де стоїть предмет, за рахунок фону.</span></div>
+    </div>
+
+    <div class="grp">
       <h4>Геометрія <em>спільна для ефіру й обʼєму</em></h4>
       <div class="row"><label>Розхил сцени</label><input type="range" id="rSpread" min="1.4" max="12" step="0.1" value="4.5"><output id="oSpread">4.5</output></div>
       <div class="row"><label>Кут огляду</label><input type="range" id="rFov" min="35" max="95" step="1" value="62"><output id="oFov">62°</output></div>
@@ -402,6 +456,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
       <div class="row"><label>Розмір точки</label><input type="range" id="rPt" min="0.4" max="4" step="0.1" value="1.4"><output id="oPt">1.4</output></div>
       <div class="row"><label>Поріг ребра</label><input type="range" id="rEdge" min="0.02" max="0.6" step="0.01" value="0.14"><output id="oEdge">0.14</output></div>
       <div class="row"><label>Кут відкидання</label><input type="range" id="rSlope" min="30" max="90" step="1" value="82"><output id="oSlope">82°</output></div>
+      <div class="row"><label>dMin (далекий зріз)</label><input type="range" id="rDmin" min="0" max="0.3" step="0.005" value="0.04"><output id="oDmin">0.040</output></div>
       <div class="note"><i></i><span>Грані, що стоять до камери рубом, — це не поверхні, а завіси, розтягнуті між планами. 90° лишає все.</span></div>
     </div>
     <div class="grp">
@@ -417,6 +472,23 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
         <button data-v="robust">p2–p98</button><button data-v="minmax">Мін-макс</button></div></div>
       <div class="note"><i></i><span>Люма: пряма = світле ближче. Модель віддає диспаритет — пряма коректна майже завжди; обернена потрібна лише якщо обʼєм вивернувся навиворіт.</span></div>
     </div>
+    <div class="grp">
+      <h4>Заповнення тіні <em>камера не бачила, що за обʼєктом</em></h4>
+      <div class="row"><label>Бекдроп</label><div class="seg" id="segBack">
+        <button data-v="1">Увімк</button><button data-v="0">Вимк</button></div></div>
+      <div class="row"><label>Ерозія</label><input type="range" id="rErode" min="2" max="16" step="1" value="6"><output id="oErode">6</output></div>
+      <div class="row"><label>Спідниця</label><div class="seg" id="segSkirt">
+        <button data-v="1">Увімк</button><button data-v="0">Вимк</button></div></div>
+      <div class="row"><label>Кроків</label><input type="range" id="rSkStep" min="1" max="10" step="1" value="4"><output id="oSkStep">4</output></div>
+      <div class="note"><i></i><span>Обидва шари — тільки точки, у меш не йдуть. Спідниця продовжує ближній край назад по його ж променю, тож із камери її не видно.</span></div>
+    </div>
+
+    <div class="grp">
+      <h4>Модель <em>діагностика</em></h4>
+      <button class="act" id="mTest">Перевірити модель <b>без зйомки</b></button>
+      <div id="mlog" class="log">Спроб не було.</div>
+    </div>
+
     <div class="grp">
       <h4>Міра</h4>
       <div class="row"><label>Масштаб</label><input type="range" id="rScale" min="1" max="500" step="1" value="100"><output id="oScale">100</output></div>
@@ -555,7 +627,7 @@ const CORE = (function () {
     const gh = Math.max(8, Math.round(gw / (o.aspect || 1)));
     const n = gw * gh;
     const pos = new Float32Array(n * 3);
-    const col = new Uint8Array(n * 3);
+    const col = o.col && o.col.length === n * 3 ? o.col : new Uint8Array(n * 3);
     const disp = new Float32Array(n);
     const tanHalf = Math.tan((o.fovY * Math.PI / 180) / 2);
     const inv = !!o.invert;
@@ -573,9 +645,11 @@ const CORE = (function () {
         const k = j * gw + i;
         pos[k * 3] = p[0]; pos[k * 3 + 1] = p[1]; pos[k * 3 + 2] = p[2];
         disp[k] = d;
-        const px = Math.round(u * (o.rw - 1)), py = Math.round(cy);
-        const q = (py * o.rw + px) * 4;
-        col[k * 3] = o.rgba[q]; col[k * 3 + 1] = o.rgba[q + 1]; col[k * 3 + 2] = o.rgba[q + 2];
+        if (!o.col) {
+          const px = Math.round(u * (o.rw - 1)), py = Math.round(cy);
+          const q = (py * o.rw + px) * 4;
+          col[k * 3] = o.rgba[q]; col[k * 3 + 1] = o.rgba[q + 1]; col[k * 3 + 2] = o.rgba[q + 2];
+        }
       }
     }
     return { pos, col, disp, gw, gh, count: n };
@@ -700,24 +774,181 @@ const CORE = (function () {
     return q;
   }
 
-  /* ── кут нахилу поверхні до променя зору ─────────────────────────────
-     |cos θ| між нормаллю й променем із камери. 1 — грань дивиться в
-     обʼєктив, 0 — стоїть до нього руба. Саме нулі й дають «завіси»,
-     розтягнуті між переднім і заднім планом. */
-  function slopeCos(pos, gw, gh) {
-    const out = new Float32Array(gw * gh);
+  /* ── нормалі сітки та кут нахилу ─────────────────────────────────────
+     Нормаль з двох дотичних сусідів, орієнтована на камеру. З неї ж
+     береться |cos θ| до променя зору: 1 — грань дивиться в обʼєктив,
+     0 — стоїть рубом. Нулі це і є «завіси» між планами. */
+  function gridNormals(pos, gw, gh) {
+    const N = new Float32Array(gw * gh * 3);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
-      const i0 = Math.max(i - 1, 0) , i1 = Math.min(i + 1, gw - 1);
+      const i0 = Math.max(i - 1, 0), i1 = Math.min(i + 1, gw - 1);
       const j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, gh - 1);
       const A = (j * gw + i0) * 3, B = (j * gw + i1) * 3, C = (j0 * gw + i) * 3, D = (j1 * gw + i) * 3, P = (j * gw + i) * 3;
       const ux = pos[B] - pos[A], uy = pos[B + 1] - pos[A + 1], uz = pos[B + 2] - pos[A + 2];
       const vx = pos[D] - pos[C], vy = pos[D + 1] - pos[C + 1], vz = pos[D + 2] - pos[C + 2];
-      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const px = pos[P], py = pos[P + 1], pz = pos[P + 2];
-      const ln = Math.sqrt(nx * nx + ny * ny + nz * nz), lp = Math.sqrt(px * px + py * py + pz * pz);
-      out[j * gw + i] = (ln < 1e-12 || lp < 1e-12) ? 0 : Math.min(1, Math.abs((nx * px + ny * py + nz * pz) / (ln * lp)));
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (l < 1e-12) { N[P] = N[P + 1] = N[P + 2] = 0; continue; }
+      nx /= l; ny /= l; nz /= l;
+      if (nx * pos[P] + ny * pos[P + 1] + nz * pos[P + 2] > 0) { nx = -nx; ny = -ny; nz = -nz; }
+      N[P] = nx; N[P + 1] = ny; N[P + 2] = nz;
+    }
+    return N;
+  }
+  function slopeCos(pos, gw, gh, nrm) {
+    const N = nrm || gridNormals(pos, gw, gh);
+    const out = new Float32Array(gw * gh);
+    for (let k = 0; k < out.length; k++) {
+      const px = pos[k * 3], py = pos[k * 3 + 1], pz = pos[k * 3 + 2];
+      const lp = Math.sqrt(px * px + py * py + pz * pz);
+      out[k] = lp < 1e-12 ? 0 : Math.min(1, Math.abs((N[k * 3] * px + N[k * 3 + 1] * py + N[k * 3 + 2] * pz) / lp));
     }
     return out;
+  }
+
+  /* ── крива ремапу глибини ────────────────────────────────────────────
+     Кусково-лінійна через контрольні точки, запечена в LUT на 257 вузлів.
+     Дає розтягнути ту ділянку діапазону, де реально живе обʼєкт. */
+  function applyCurve(d, pts) {
+    if (!pts || pts.length < 2) return Float32Array.from(d);
+    const P = pts.slice().sort((a, b) => a[0] - b[0]);
+    const LUT = new Float32Array(257);
+    for (let i = 0; i <= 256; i++) {
+      const x = i / 256;
+      let k = 0;
+      while (k < P.length - 2 && x > P[k + 1][0]) k++;
+      const x0 = P[k][0], y0 = P[k][1], x1 = P[k + 1][0], y1 = P[k + 1][1];
+      const t = (x1 - x0) <= 1e-9 ? 0 : clamp((x - x0) / (x1 - x0), 0, 1);
+      LUT[i] = clamp(y0 + (y1 - y0) * t, 0, 1);
+    }
+    const out = new Float32Array(d.length);
+    for (let i = 0; i < d.length; i++) {
+      const x = clamp(d[i], 0, 1) * 256, i0 = Math.floor(x), f = x - i0;
+      out[i] = LUT[i0] + (LUT[Math.min(i0 + 1, 256)] - LUT[i0]) * f;
+    }
+    return out;
+  }
+
+  /* dMin: жорсткий зріз далекого краю. Похідна dz/dd росте як z², тож
+     біля d→0 один рівень шуму коштує метри — саме там точки й дрижать. */
+  function clampDisp(d, dMin) {
+    const o = Float32Array.from(d);
+    for (let i = 0; i < o.length; i++) if (o[i] < dMin) o[i] = dMin;
+    return o;
+  }
+
+  /* ── ерозія мінімумом з памʼяттю джерела ─────────────────────────────
+     Сепарабельна (min асоціативний), тому квадратне вікно точне.
+     idx каже, який піксель дав мінімум — звідти беремо колір фону. */
+  function minFilterIdx(src, w, h, r) {
+    const tv = new Float32Array(w * h), ti = new Int32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let best = Infinity, bi = y * w + x;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) {
+        const v = src[y * w + k]; if (v < best) { best = v; bi = y * w + k; }
+      }
+      tv[y * w + x] = best; ti[y * w + x] = bi;
+    }
+    const ov = new Float32Array(w * h), oi = new Int32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let best = Infinity, bi = ti[y * w + x];
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) {
+        const v = tv[k * w + x]; if (v < best) { best = v; bi = ti[k * w + x]; }
+      }
+      ov[y * w + x] = best; oi[y * w + x] = bi;
+    }
+    return { data: ov, idx: oi };
+  }
+
+  /* ── бекдроп ─────────────────────────────────────────────────────────
+     Камера ніколи не бачила, що за обʼєктом. Ерозія мінімумом зʼїдає
+     передній план, лишаючи правдоподібне продовження фону, і цей шар
+     кладеться позаду — щоб при обльоті в дірку не світило чорне. */
+  function buildBackdrop(o) {
+    const er = minFilterIdx(o.depth, o.dw, o.dh, Math.max(1, o.erode | 0));
+    const gw = Math.max(8, o.grid | 0), gh = Math.max(8, Math.round(gw / (o.aspect || 1)));
+    const n = gw * gh;
+    const pos = new Float32Array(n * 3), col = new Uint8Array(n * 3), disp = new Float32Array(n);
+    const tanHalf = Math.tan((o.fovY * Math.PI / 180) / 2);
+    for (let j = 0; j < gh; j++) {
+      const v = gh === 1 ? .5 : j / (gh - 1), dy = (1 - v) * (o.dh - 1);
+      for (let i = 0; i < gw; i++) {
+        const u = gw === 1 ? .5 : i / (gw - 1), dx = u * (o.dw - 1);
+        const d = clamp(sampleBilinear(er.data, o.dw, o.dh, dx, dy), 0, 1) * (1 - (o.push || 0));
+        const z = dispToZ(d, o.zNear, o.zFar);
+        const p = unproject(u, v, z, tanHalf, o.aspect);
+        const k = j * gw + i;
+        pos[k * 3] = p[0]; pos[k * 3 + 1] = p[1]; pos[k * 3 + 2] = p[2]; disp[k] = d;
+        const si = er.idx[clamp(Math.round(dy), 0, o.dh - 1) * o.dw + clamp(Math.round(dx), 0, o.dw - 1)];
+        const sx = si % o.dw, sy = (si / o.dw) | 0;
+        const q = (clamp(Math.round(sy / Math.max(1, o.dh - 1) * (o.rh - 1)), 0, o.rh - 1) * o.rw +
+                   clamp(Math.round(sx / Math.max(1, o.dw - 1) * (o.rw - 1)), 0, o.rw - 1)) * 4;
+        col[k * 3] = o.rgba[q]; col[k * 3 + 1] = o.rgba[q + 1]; col[k * 3 + 2] = o.rgba[q + 2];
+      }
+    }
+    return { pos, col, disp, gw, gh, count: n };
+  }
+
+  /* ── спідниця на силуетах ────────────────────────────────────────────
+     На розриві глибини ближній край продовжується НАЗАД ПО СВОЄМУ ПРОМЕНЮ,
+     а не тягнеться до сусіда. Розгортка лінійна по z, тож точка на промені
+     це просто p·(z/z₀) — жодної тригонометрії. З камери спідниця невидима,
+     при обльоті вона закриває щілину між планами. */
+  function buildSkirt(pos, col, gw, gh, o) {
+    const P = [], C = [], D = [];
+    const steps = Math.max(1, o.steps | 0), tol = o.tol;
+    const emit = (a, z) => {
+      const za = -pos[a * 3 + 2], s = z / za;
+      P.push(pos[a * 3] * s, pos[a * 3 + 1] * s, pos[a * 3 + 2] * s);
+      C.push(col[a * 3], col[a * 3 + 1], col[a * 3 + 2]);
+      D.push(clamp(zToDisp(z, o.zNear, o.zFar), 0, 1));
+    };
+    const edge = (a, b) => {
+      const za = -pos[a * 3 + 2], zb = -pos[b * 3 + 2];
+      const zn = Math.min(za, zb), zf = Math.max(za, zb);
+      if (zn <= 1e-6 || (zf - zn) / zn <= tol) return;
+      const near = za < zb ? a : b;
+      for (let t = 1; t <= steps; t++) emit(near, zn + (zf - zn) * (t / (steps + 1)));
+    };
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw - 1; i++) edge(j * gw + i, j * gw + i + 1);
+    for (let j = 0; j < gh - 1; j++) for (let i = 0; i < gw; i++) edge(j * gw + i, (j + 1) * gw + i);
+    return { pos: Float32Array.from(P), col: Uint8Array.from(C), disp: Float32Array.from(D), count: D.length };
+  }
+
+  /* ── пензель по глибині ──────────────────────────────────────────────
+     Правки живуть окремим шаром дельт, тому переживають зміну фільтрів.
+     Радіус задається в частках висоти кадру, щоб мазок був круглим на
+     екрані незалежно від того, квадратну чи широку мапу віддала модель. */
+  function brushDelta(edit, base, dw, dh, o) {
+    const rx = Math.max(1, (o.r / (o.aspect || 1)) * dw), ry = Math.max(1, o.r * dh);
+    const cx = clamp(o.u, 0, 1) * (dw - 1), cy = (1 - clamp(o.v, 0, 1)) * (dh - 1);
+    const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(dw - 1, Math.ceil(cx + rx));
+    const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(dh - 1, Math.ceil(cy + ry));
+    const cur = i => base[i] + edit[i];
+    let mean = 0, cnt = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = (x - cx) / rx, dy = (y - cy) / ry;
+      if (dx * dx + dy * dy > 1) continue;
+      mean += cur(y * dw + x); cnt++;
+    }
+    if (!cnt) return { x0, y0, x1, y1, touched: 0 };
+    mean /= cnt;
+    const cIdx = clamp(Math.round(cy), 0, dh - 1) * dw + clamp(Math.round(cx), 0, dw - 1);
+    const target = o.mode === 'flat' ? cur(cIdx) : mean;
+    let touched = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = (x - cx) / rx, dy = (y - cy) / ry;
+      const dd = Math.sqrt(dx * dx + dy * dy);
+      if (dd > 1) continue;
+      const t = 1 - dd, w = t * t * (3 - 2 * t);
+      const i = y * dw + x;
+      if (o.mode === 'push') edit[i] += o.strength * w * 0.25;
+      else if (o.mode === 'pull') edit[i] -= o.strength * w * 0.25;
+      else edit[i] += (target - cur(i)) * o.strength * w;
+      edit[i] = clamp(base[i] + edit[i], 0, 1) - base[i];
+      touched++;
+    }
+    return { x0, y0, x1, y1, touched };
   }
 
   /* лишаємо тільки те, що реально видно: вікно глибини + поріг нахилу */
@@ -738,6 +969,28 @@ const CORE = (function () {
       k++;
     }
     return { pos: P, col: C, count: n, dropped: count - n };
+  }
+
+
+  /* ── розкладання плаского тензора в сітку ────────────────────────────
+     Різні складання моделі віддають dims як [H,W], [1,H,W] або [1,1,H,W],
+     а буває що dims нема зовсім. Раніше тут стояла перевірка, яка на
+     розбіжності просто кидала виняток — і весь інференс тихо падав у
+     фолбек. Тепер спершу віримо dims, а якщо не сходиться — підбираємо
+     дільник, найближчий до очікуваного за співвідношенням сторін. */
+  function inferDims(len, dims, aspect) {
+    if (!len || len < 4) return null;
+    if (dims && dims.length >= 2) {
+      const h = dims[dims.length - 2], w = dims[dims.length - 1];
+      if (w > 0 && h > 0 && w * h === len) return { dw: w, dh: h, from: 'dims' };
+    }
+    const guess = Math.max(1, Math.round(Math.sqrt(len / Math.max(aspect || 1, 1e-6))));
+    for (let k = 0; k <= 256; k++) {
+      for (const c of (k ? [guess - k, guess + k] : [guess])) {
+        if (c > 0 && c <= len && len % c === 0) return { dw: len / c, dh: c, from: 'aspect' };
+      }
+    }
+    return null;
   }
 
   /* ── статистика ───────────────────────────────────────────────────── */
@@ -924,6 +1177,7 @@ const CORE = (function () {
   return {
     clamp, lerp, dispToZ, zToDisp, unproject, sampleBilinear, resample, smooth, normalize,
     percentiles, normalizeRobust, sat, boxMean, guidedFilter, slopeCos, filterCloud,
+    gridNormals, applyCurve, clampDisp, inferDims, minFilterIdx, buildBackdrop, buildSkirt, brushDelta,
     grayscale, lumaDisparity, buildCloud, buildIndex, centroid, bbox, writePLY,
     histogram, stats, countPlanes, noiseSigma, laplacianVar, cct, palette,
     analyzeFrame, analyzeDepth, verdicts, hex
@@ -951,7 +1205,14 @@ const S = {
   norm: 'robust',          // robust | minmax
   slopeMax: 82,            // градуси: більше — м'якше відкидання. Похилий стіл під
                            // гострим кутом теж «майже завіса», тож дефолт консервативний
-  raw: null,               // сирий кадр + сира глибина для перезбірки без пересъйомки
+  raw: null,               // сирий кадр + сира глибина для перезбірки без пересйомки
+  dMin: 0.04,              // жорсткий зріз далекого краю
+  curve: [[0,0],[.25,.25],[.5,.5],[.75,.75],[1,1]],
+  backdrop: 1, skirt: 1,   // заповнення тіні за обʼєктом
+  erode: 6, skirtSteps: 4,
+  brush: 0, bMode: 'push', bR: 0.09, bStr: 0.5,
+  base: null, edit: null,  // глибина після фільтрів + шар ручних правок
+  depth: null, fillCount: 0,
   srcPref: 'model',        // model | luma
   scale: 100,              // калібрування міри
   win: { n: 0.0, f: 1.0 }, // вікно глибини в диспаритеті
@@ -966,7 +1227,9 @@ const els = {};
  'tGeom','tagGeom','tPal','tagPal','tCfg','tAn','anDot','hint','dwBox','hist','dwBand','dwNear','dwFar',
  'dwVal','fx','ruler','bReset','bShot','shotBar','bExp','toasts','scrim','sheet','tabCfg','tabAn','tabEx',
  'paneCfg','paneAn','paneEx','anEmpty','anBody','exEmpty','exBody','exKv','exPlyN','exGlbN',
- 'exPly','exGlb','exPng','exJson','shotLbl','oSlope','vid']
+ 'exPly','exGlb','exPng','exJson','shotLbl','oSlope','tBrush','tagBrush','brushBar','bReset2',
+ 'curveCv','curveRst','mlog','mTest','segBMode','rBR','oBR','rBS','oBS','rDmin','oDmin',
+ 'segBack','segSkirt','rErode','oErode','rSkStep','oSkStep','vid']
   .forEach(k => els[k] = $(k));
 { const miss = Object.keys(els).filter(k => !els[k]);
   if (miss.length) { document.body.insertAdjacentHTML('afterbegin',
@@ -985,6 +1248,7 @@ const chatter = () => CHATTER[(chatterI++) % CHATTER.length];
    ═══════════════════════════════════════════════════════════════════════ */
 const GLSL_COMMON = `
   varying vec3 vCol; varying float vD; varying float vZ;
+  varying float vLam; varying float vRim;
   uniform float uPal, uBands, uIsPoints;
   vec3 ramp(float t){
     vec3 a=vec3(0.024,0.106,0.180), b=vec3(0.039,0.435,0.478),
@@ -999,7 +1263,13 @@ const FS = GLSL_COMMON + `
     if(uIsPoints>0.5){ vec2 q=gl_PointCoord-vec2(0.5); if(dot(q,q)>0.25) discard; }
     vec3 col;
     if(uPal<0.5) col=vCol;
-    else if(uPal<1.5) col=ramp(vD);
+    else if(uPal<1.5){
+      /* ФОРМА: глина під ліхтарем із камери. Альбедо викинуто навмисно —
+         чорний бік банки на чорному тлі інакше просто не існує для ока. */
+      vec3 clay=vec3(0.70,0.74,0.73);
+      col=clay*(0.09+0.91*vLam)+vec3(0.0,1.0,0.702)*vRim*0.40;
+    }
+    else if(uPal<2.5) col=ramp(vD);
     else{
       float b=fract(vD*uBands);
       float line=1.0-smoothstep(0.0,0.09,min(b,1.0-b))*1.0;
@@ -1037,6 +1307,13 @@ const VS_LIVE = GLSL_COMMON + VS_HEAD + `
   void main(){
     float d=dep(uv);
     if(d<uWinN||d>uWinF){ gl_Position=vec4(0.0); return; }
+    /* прев'ю-нормаль: похила висотного поля, дві вибірки замість повного
+       перерахунку сусідніх променів — у ефірі цього досить */
+    vec2 en=uTexel*2.0;
+    float gx=(uInvert>0.5?-1.0:1.0)*(lum(uv+vec2(en.x,0.0))-lum(uv-vec2(en.x,0.0)));
+    float gy=(uInvert>0.5?-1.0:1.0)*(lum(uv+vec2(0.0,en.y))-lum(uv-vec2(0.0,en.y)));
+    vec3 nl=normalize(vec3(-gx*14.0,-gy*14.0,1.0));
+    vLam=clamp(nl.z,0.0,1.0); vRim=pow(1.0-vLam,3.0);
     if(uIsPoints<0.5){
       vec2 e=uTexel*2.0;
       float gx=abs(dep(uv+vec2(e.x,0.0))-dep(uv-vec2(e.x,0.0)));
@@ -1049,11 +1326,15 @@ const VS_LIVE = GLSL_COMMON + VS_HEAD + `
 /* обʼєм: глибина вже порахована — приходить атрибутом */
 const VS_CLOUD = GLSL_COMMON + `
   uniform float uPtScale,uResY,uWinN,uWinF,uTanHalf,uSlopeMin;
-  attribute vec3 aColor; attribute float aD; attribute float aS;
+  attribute vec3 aColor; attribute float aD; attribute float aS; attribute vec3 aN;
   void main(){
     if(aD<uWinN||aD>uWinF||aS<uSlopeMin){ gl_Position=vec4(0.0); return; }
     vD=aD; vCol=aColor; vZ=-position.z;
     vec4 mv=modelViewMatrix*vec4(position,1.0);
+    vec3 n=length(aN)<0.5?vec3(0.0,0.0,1.0):aN;
+    vec3 Nv=normalize(normalMatrix*n);
+    vLam=max(dot(Nv,normalize(-mv.xyz)),0.0);
+    vRim=pow(1.0-vLam,3.0);
     gl_Position=projectionMatrix*mv;
     gl_PointSize=clamp(uPtScale*uResY*0.0018/(max(-position.z,0.05)*uTanHalf),1.0,26.0);
   }`;
@@ -1334,10 +1615,13 @@ let depthPipe = null, modelDead = false;
 
 async function getPipe(onProg) {
   if (depthPipe) return depthPipe;
+  mlog('тягну transformers.js…');
   const lib = await import(/* @vite-ignore */ TFJS);
   lib.env.allowLocalModels = false;
+  mlog('бібліотека піднялась', 'ok');
   let webgpu = false;
   try { webgpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) {}
+  mlog('WebGPU: ' + (webgpu ? 'є' : 'нема, йду на wasm'));
   const hw = webgpu ? [['webgpu', 'fp16'], ['wasm', 'q8']] : [['wasm', 'q8']];
   const plans = [];
   for (const id of MODEL_IDS) for (const [d, t] of hw) plans.push([id, d, t]);
@@ -1355,8 +1639,12 @@ async function getPipe(onProg) {
           }
         }
       });
+      mlog(id.split('/')[1] + ' · ' + device + '/' + dtype + ' — піднявся', 'ok');
       return depthPipe;
-    } catch (e) { last = e; }          /* напр. fp16-варіанта нема — падаємо на wasm/q8 */
+    } catch (e) {
+      last = e;
+      mlog(id.split('/')[1] + ' · ' + device + '/' + dtype + ' — ' + (e && e.message || e), 'err');
+    }
   }
   throw last || new Error('pipeline недоступний');
 }
@@ -1368,13 +1656,17 @@ async function modelDepthRaw(frame, onProg) {
   const pipe = await getPipe(onProg);
   const out = await pipe(url);
   const t = out.predicted_depth || out.depth;
-  const dims = t.dims || t.shape || [];
-  const dh = dims.length >= 2 ? dims[dims.length - 2] : small.h;
-  const dw = dims.length >= 2 ? dims[dims.length - 1] : small.w;
-  const raw = t.data ? Float32Array.from(t.data) : Float32Array.from(out.depth.data);
-  if (raw.length !== dw * dh) throw new Error('розмір тензора ' + raw.length + ' ≠ ' + dw + '×' + dh);
-  if (CORE.normalize(raw).flat) throw new Error('модель повернула плоску мапу');
-  return { data: raw, dw, dh };
+  if (!t) throw new Error('пайплайн не повернув ні predicted_depth, ні depth');
+  const raw = Float32Array.from(t.data || t);
+  const dims = t.dims || t.shape || null;
+  mlog('тензор: len=' + raw.length + ' dims=[' + (dims || ['?']).join(',') + ']');
+  const g = CORE.inferDims(raw.length, dims, small.w / small.h);
+  if (!g) throw new Error('не зміг розкласти ' + raw.length + ' значень у сітку');
+  const st = CORE.stats(raw, raw.length);
+  mlog('сітка ' + g.dw + '×' + g.dh + ' · min ' + st.min.toFixed(3) + ' max ' + st.max.toFixed(3) +
+       ' · медіана ' + st.median.toFixed(3));
+  if (CORE.normalize(raw).flat) throw new Error('модель повернула плоску мапу (min = max)');
+  return { data: raw, dw: g.dw, dh: g.dh };
 }
 
 function lumaRaw(frame) {
@@ -1390,10 +1682,20 @@ function composeDepth() {
   const R = S.raw;
   const n = S.norm === 'robust' ? CORE.normalizeRobust(R.depth, 0.02, 0.98) : CORE.normalize(R.depth);
   let d = n.data;
+  if (S.invert) { const t = new Float32Array(d.length); for (let i = 0; i < d.length; i++) t[i] = 1 - d[i]; d = t; }
   if (S.smooth > 0) d = CORE.smooth(d, R.dw, R.dh, S.smooth);
   if (S.guideR > 0) d = CORE.guidedFilter(d, R.guide, R.dw, R.dh, S.guideR | 0, epsOf());
+  d = CORE.applyCurve(d, S.curve);
+  if (S.dMin > 0) d = CORE.clampDisp(d, S.dMin);
   for (let i = 0; i < d.length; i++) d[i] = d[i] < 0 ? 0 : d[i] > 1 ? 1 : d[i];
   return { data: d, clipped: n.clipped || 0 };
+}
+/* фінальна глибина = фільтри + ручні правки. Правки живуть окремо, тому
+   переживають будь-яку зміну повзунків. */
+function mixEdit() {
+  const n = S.base.length, o = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = S.base[i] + S.edit[i]; o[i] = v < 0 ? 0 : v > 1 ? 1 : v; }
+  return o;
 }
 const epsOf = () => Math.pow(10, -4 + 3 * (S.epsK / 100));
 
@@ -1402,14 +1704,18 @@ function buildFromRaw(fresh) {
   const R = S.raw; if (!R) return;
   const t0 = performance.now();
   const dep = composeDepth();
+  S.base = dep.data;
+  if (!S.edit || S.edit.length !== S.base.length) S.edit = new Float32Array(S.base.length);
+  S.depth = mixEdit();
   const c = CORE.buildCloud({
-    depth: dep.data, dw: R.dw, dh: R.dh,
+    depth: S.depth, dw: R.dw, dh: R.dh,
     rgba: R.frame.data, rw: R.frame.w, rh: R.frame.h,
     grid: S.grid, aspect: S.aspect, fovY: S.fov,
-    zNear: S.zNear, zFar: S.spread, invert: S.invert
+    zNear: S.zNear, zFar: S.spread, invert: false
   });
   c.src = R.src;
-  c.slope = CORE.slopeCos(c.pos, c.gw, c.gh);
+  c.normals = CORE.gridNormals(c.pos, c.gw, c.gh);
+  c.slope = CORE.slopeCos(c.pos, c.gw, c.gh, c.normals);
   c.stamp = fresh || !S.cloud ? new Date() : S.cloud.stamp;
   c.ms = Math.round(performance.now() - t0);
   c.frameStats = fresh || !S.cloud ? CORE.analyzeFrame(R.small.data, R.small.w, R.small.h) : S.cloud.frameStats;
@@ -1419,7 +1725,7 @@ function buildFromRaw(fresh) {
   c.analysis = { frame: c.frameStats, depth: dstat };
   c.analysis.verdicts = CORE.verdicts(c.frameStats, dstat, c.src);
   S.cloud = c;
-  mountCloud(c); renderAnalysis(); renderExport(); slopeReadout();
+  mountCloud(c); mountFill(c); renderAnalysis(); renderExport(); slopeReadout(); drawCurve();
   return c;
 }
 function slopeMinCos() { return S.slopeMax >= 90 ? -1 : Math.cos(S.slopeMax * Math.PI / 180); }
@@ -1453,14 +1759,18 @@ async function capture() {
     if (S.srcPref === 'model' && !modelDead) {
       els.shotLbl.textContent = chatter();
       setP(0.12, 'МОДЕЛЬ');
+      const ti = performance.now();
       raw = await modelDepthRaw(frame, (p, dev) => { setP(0.12 + p * 0.6, 'ВАГИ ' + Math.round(p * 100) + '% · ' + dev.toUpperCase()); });
+      mlog('інференс ' + Math.round(performance.now() - ti) + ' мс', 'ok');
       src = 'model';
       setP(0.78, 'ГЛИБИНА');
     } else throw new Error('luma');
   } catch (e) {
     if (S.srcPref === 'model' && String(e.message) !== 'luma') {
       modelDead = true;
-      toast('Модель не піднялась (' + (e.message || e) + '). Падаю на яскравість — це рельєф, не глибина.', 'warn');
+      mlog('ПАДІННЯ: ' + (e && e.message || e), 'err');
+      mlog('джерело глибини — яскравість кадру. Це рельєф, не обʼєм.', 'warn');
+      failBanner(e && e.message || String(e));
     }
     raw = lumaRaw(frame);
     src = 'luma';
@@ -1499,20 +1809,26 @@ function mountCloud(c) {
   const col = new THREE.BufferAttribute(Float32Array.from(c.col, v => v / 255), 3);
   const dd = new THREE.BufferAttribute(c.disp, 1);
   const ss = new THREE.BufferAttribute(c.slope, 1);
+  const nn = new THREE.BufferAttribute(c.normals, 3);
+  const put = g => { g.setAttribute('position', pos); g.setAttribute('aColor', col);
+                     g.setAttribute('aD', dd); g.setAttribute('aS', ss); g.setAttribute('aN', nn); };
 
-  const gp = new THREE.BufferGeometry();
-  gp.setAttribute('position', pos); gp.setAttribute('aColor', col); gp.setAttribute('aD', dd); gp.setAttribute('aS', ss);
-  const gm = new THREE.BufferGeometry();
-  gm.setAttribute('position', pos); gm.setAttribute('aColor', col); gm.setAttribute('aD', dd); gm.setAttribute('aS', ss);
+  const gp = new THREE.BufferGeometry(); put(gp);
+  const gm = new THREE.BufferGeometry(); put(gm);
   gm.setIndex(new THREE.BufferAttribute(CORE.buildIndex(c.pos, c.gw, c.gh, S.edgeTol), 1));
-  gp.computeBoundingSphere(); gm.computeBoundingSphere();
+  /* окрема геометрія для влучань: індекс повний, без відкидання розривів —
+     інакше пензлем не потрапиш саме туди, де глибина й поламана */
+  const gk = new THREE.BufferGeometry(); put(gk);
+  gk.setIndex(new THREE.BufferAttribute(CORE.buildIndex(c.pos, c.gw, c.gh, 1e9), 1));
+  gp.computeBoundingSphere(); gm.computeBoundingSphere(); gk.computeBoundingSphere();
+  c.geo = { gp, gm, gk };
 
   const mp = new THREE.ShaderMaterial({ uniforms: uni(), vertexShader: VS_CLOUD, fragmentShader: FS });
   const mm = new THREE.ShaderMaterial({ uniforms: uni(), vertexShader: VS_CLOUD, fragmentShader: FS, side: THREE.DoubleSide });
   mm.uniforms.uIsPoints.value = 0;
   cloudPts = new THREE.Points(gp, mp);
   cloudMesh = new THREE.Mesh(gm, mm);
-  pickMesh = new THREE.Mesh(gm, new THREE.MeshBasicMaterial());
+  pickMesh = new THREE.Mesh(gk, new THREE.MeshBasicMaterial());
   pickMesh.visible = false;
   scene.add(cloudPts, cloudMesh, pickMesh);
   c.centroid = CORE.centroid(c.pos, c.count);
@@ -1529,7 +1845,13 @@ function setMode(m) {
   S.mode = m;
   [['live', els.mLive], ['view', els.mView], ['measure', els.mMeas]]
     .forEach(([k, b]) => b.setAttribute('aria-selected', String(k === m)));
-  ctl.enabled = m !== 'live';
+  if (m !== 'view' && S.brush) {                 /* пензель живе тільки в обʼємі */
+    S.brush = 0;
+    els.tBrush.setAttribute('aria-pressed', 'false');
+    els.brushBar.classList.remove('on');
+    bcur.classList.remove('on');
+  }
+  ctl.enabled = m !== 'live' && !S.brush;
   if (m === 'live') { cam.position.set(0, 0, 0); cam.lookAt(0, 0, -1); }
   else if (S.cloud) { ctl.target.fromArray(S.cloud.centroid); ctl.update(); }
   els.ruler.classList.toggle('hide', m !== 'measure');
@@ -1791,10 +2113,12 @@ els.tGeom.onclick = () => {
   applyVisibility(); hint(S.geom === 'points' ? 'Точки' : 'Меш — з відкиданням розривів');
 };
 els.tPal.onclick = () => {
-  S.pal = (S.pal + 1) % 3;
-  els.tagPal.textContent = ['RGB', 'ТЕПЛ', 'ІЗО'][S.pal];
+  S.pal = (S.pal + 1) % 4;
+  els.tagPal.textContent = ['RGB', 'ФРМ', 'ТЕПЛ', 'ІЗО'][S.pal];
   els.tPal.setAttribute('aria-pressed', String(S.pal > 0));
-  syncUniforms(); hint(['Кольори камери', 'Теплова мапа глибини', 'Ізолінії глибини'][S.pal]);
+  syncUniforms();
+  hint(['Кольори камери', 'Форма: глина під ліхтарем із камери',
+        'Теплова мапа глибини', 'Ізолінії глибини'][S.pal]);
 };
 els.bReset.onclick = () => {
   clearMeasure();
@@ -1851,6 +2175,277 @@ addEventListener('keydown', e => {
 });
 
 layoutWin();
+/* ═══════════════════════════════════════════════════════════════════════
+   ЛОГ МОДЕЛІ — тост живе 3 секунди, лог живе завжди
+   ═══════════════════════════════════════════════════════════════════════ */
+let mlogN = 0;
+function mlog(txt, kind) {
+  if (!els.mlog) return;
+  if (mlogN++ === 0) els.mlog.textContent = '';
+  const tag = kind === 'err' ? 'i' : kind === 'warn' ? 'u' : kind === 'ok' ? 'b' : 'span';
+  const t = new Date().toLocaleTimeString('uk');
+  els.mlog.insertAdjacentHTML('beforeend', `<${tag}>${t} · ${String(txt).replace(/[<>]/g, '')}</${tag}>\n`);
+  els.mlog.scrollTop = els.mlog.scrollHeight;
+}
+function failBanner(msg) {
+  els.led.className = 'led err';
+  els.statTxt.textContent = 'МОДЕЛЬ ВПАЛА';
+  els.tSrc.style.color = 'var(--warn)';
+  toast('Модель впала: ' + msg + ' · Деталі в Параметри → Модель', 'err');
+}
+
+/* прогін моделі на синтетичному градієнті — діагностика без камери */
+async function testModel() {
+  els.mTest.disabled = true;
+  els.mTest.querySelector('b').textContent = 'працюю…';
+  try {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 192;
+    const x = c.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 256, 192);
+    gr.addColorStop(0, '#111'); gr.addColorStop(1, '#eee');
+    x.fillStyle = gr; x.fillRect(0, 0, 256, 192);
+    x.fillStyle = '#c33'; x.beginPath(); x.arc(128, 96, 46, 0, 7); x.fill();
+    const t0 = performance.now();
+    const out = await modelDepthRaw({ canvas: c, ctx: x, w: 256, h: 192, data: x.getImageData(0, 0, 256, 192).data },
+      (p, dev) => els.mTest.querySelector('b').textContent = Math.round(p * 100) + '% ' + dev);
+    mlog('ТЕСТ ПРОЙДЕНО за ' + Math.round(performance.now() - t0) + ' мс', 'ok');
+    els.mTest.querySelector('b').textContent = 'ok';
+    toast('Модель жива: ' + out.dw + '×' + out.dh);
+    modelDead = false;
+  } catch (e) {
+    mlog('ТЕСТ ВПАВ: ' + (e && e.message || e), 'err');
+    if (e && e.stack) mlog(String(e.stack).split('\n')[1] || '', 'err');
+    els.mTest.querySelector('b').textContent = 'впав';
+  }
+  els.mTest.disabled = false;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ЗАПОВНЕННЯ ТІНІ: БЕКДРОП + СПІДНИЦЯ
+   ═══════════════════════════════════════════════════════════════════════ */
+let fillPts;
+function mountFill(c) {
+  if (fillPts) { scene.remove(fillPts); fillPts.geometry.dispose(); fillPts.material.dispose(); fillPts = null; }
+  if (!c || (!S.backdrop && !S.skirt)) { S.fillCount = 0; return; }
+  const R = S.raw, parts = [];
+  if (S.backdrop) parts.push(CORE.buildBackdrop({
+    depth: S.depth, dw: R.dw, dh: R.dh, rgba: R.frame.data, rw: R.frame.w, rh: R.frame.h,
+    grid: Math.max(48, S.grid >> 1), aspect: S.aspect, fovY: S.fov,
+    zNear: S.zNear, zFar: S.spread, erode: S.erode, push: 0.05
+  }));
+  if (S.skirt) parts.push(CORE.buildSkirt(c.pos, c.col, c.gw, c.gh,
+    { tol: S.edgeTol, steps: S.skirtSteps, zNear: S.zNear, zFar: S.spread }));
+
+  const n = parts.reduce((s, p) => s + p.count, 0);
+  S.fillCount = n;
+  if (!n) return;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const dsp = new Float32Array(n), slp = new Float32Array(n).fill(1), nrm = new Float32Array(n * 3);
+  let o = 0;
+  for (const p of parts) {
+    for (let i = 0; i < p.count; i++, o++) {
+      const px = p.pos[i * 3], py = p.pos[i * 3 + 1], pz = p.pos[i * 3 + 2];
+      pos[o * 3] = px; pos[o * 3 + 1] = py; pos[o * 3 + 2] = pz;
+      col[o * 3] = p.col[i * 3] / 255; col[o * 3 + 1] = p.col[i * 3 + 1] / 255; col[o * 3 + 2] = p.col[i * 3 + 2] / 255;
+      dsp[o] = p.disp[i];
+      /* нормаль заповнювачів дивиться в камеру: під ліхтарем вони мусять
+         бути тлом, а не блимати як окремі поверхні */
+      const l = Math.sqrt(px * px + py * py + pz * pz) || 1;
+      nrm[o * 3] = -px / l; nrm[o * 3 + 1] = -py / l; nrm[o * 3 + 2] = -pz / l;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aD', new THREE.BufferAttribute(dsp, 1));
+  g.setAttribute('aS', new THREE.BufferAttribute(slp, 1));
+  g.setAttribute('aN', new THREE.BufferAttribute(nrm, 3));
+  g.computeBoundingSphere();
+  const m = new THREE.ShaderMaterial({ uniforms: uni(), vertexShader: VS_CLOUD, fragmentShader: FS });
+  fillPts = new THREE.Points(g, m);
+  scene.add(fillPts);
+  syncUniforms(); applyVisibility();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   КРИВА ГЛИБИНИ
+   ═══════════════════════════════════════════════════════════════════════ */
+const ccx = els.curveCv.getContext('2d');
+function drawCurve() {
+  const W = els.curveCv.width, H = els.curveCv.height;
+  ccx.clearRect(0, 0, W, H);
+  if (S.cloud) {                                    // гістограма під кривою
+    const h = S.cloud.analysis.depth.hist;
+    let mx = 1; for (const v of h) if (v > mx) mx = v;
+    ccx.fillStyle = 'rgba(0,255,179,.13)';
+    h.forEach((v, i) => {
+      const bh = Math.pow(v / mx, .6) * H;
+      ccx.fillRect(i / h.length * W, H - bh, W / h.length + 1, bh);
+    });
+  }
+  ccx.strokeStyle = 'rgba(255,255,255,.08)'; ccx.lineWidth = 2;
+  for (let k = 1; k < 4; k++) {
+    ccx.beginPath(); ccx.moveTo(W * k / 4, 0); ccx.lineTo(W * k / 4, H);
+    ccx.moveTo(0, H * k / 4); ccx.lineTo(W, H * k / 4); ccx.stroke();
+  }
+  ccx.strokeStyle = 'rgba(255,255,255,.13)';
+  ccx.beginPath(); ccx.moveTo(0, H); ccx.lineTo(W, 0); ccx.stroke();
+  ccx.strokeStyle = '#00ffb3'; ccx.lineWidth = 4; ccx.beginPath();
+  for (let i = 0; i <= 128; i++) {
+    const x = i / 128;
+    const y = CORE.applyCurve(Float32Array.of(x), S.curve)[0];
+    i ? ccx.lineTo(x * W, (1 - y) * H) : ccx.moveTo(x * W, (1 - y) * H);
+  }
+  ccx.stroke();
+  for (const [x, y] of S.curve) {
+    ccx.fillStyle = '#050607'; ccx.beginPath(); ccx.arc(x * W, (1 - y) * H, 11, 0, 7); ccx.fill();
+    ccx.strokeStyle = '#00ffb3'; ccx.lineWidth = 3; ccx.stroke();
+  }
+}
+(function initCurve() {
+  let grab = -1;
+  const at = e => {
+    const r = els.curveCv.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height];
+  };
+  els.curveCv.addEventListener('pointerdown', e => {
+    els.curveCv.setPointerCapture(e.pointerId);
+    const [x, y] = at(e);
+    let best = 1e9;
+    S.curve.forEach((p, i) => { const d = Math.hypot(p[0] - x, p[1] - y); if (d < best) { best = d; grab = i; } });
+    if (best > 0.18) grab = -1; else move(e);
+  });
+  const move = e => {
+    if (grab < 0) return;
+    const [, y] = at(e);
+    S.curve[grab][1] = CORE.clamp(y, 0, 1);          // X зафіксовано — крива лишається функцією
+    drawCurve();
+  };
+  els.curveCv.addEventListener('pointermove', move);
+  const up = () => { if (grab >= 0 && S.raw) { grab = -1; rebuild(); } else grab = -1; };
+  els.curveCv.addEventListener('pointerup', up);
+  els.curveCv.addEventListener('pointercancel', up);
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ПЕНЗЕЛЬ
+   ═══════════════════════════════════════════════════════════════════════ */
+const bcur = $('brushCursor');
+let painting = false, repaintQueued = false;
+
+function setBrush(on) {
+  S.brush = on && S.cloud ? 1 : 0;
+  els.tBrush.setAttribute('aria-pressed', String(!!S.brush));
+  els.brushBar.classList.toggle('on', !!S.brush);
+  bcur.classList.toggle('on', !!S.brush);
+  if (ctl) ctl.enabled = !S.brush && S.mode !== 'live';
+  if (S.brush) { if (S.mode === 'live') setMode('view'); hint('Малюй по поверхні — глибина піде за пальцем'); }
+}
+function uvAt(cx, cy) {
+  const p = pickAt(cx, cy);
+  if (!p) return null;
+  /* точка лежить на власному промені, тож UV дістається аналітично —
+     це рівно обернена розгортка, та сама, що перевірена в харнесі */
+  const tan = Math.tan(S.fov * Math.PI / 360), z = -p.z;
+  if (z <= 1e-6) return null;
+  return [(p.x / z / (tan * S.aspect) + 1) / 2, (p.y / z / tan + 1) / 2];
+}
+function paintAt(cx, cy) {
+  if (!S.raw || !S.base) return;
+  const uv = uvAt(cx, cy);
+  if (!uv) return;
+  CORE.brushDelta(S.edit, S.base, S.raw.dw, S.raw.dh,
+    { u: uv[0], v: uv[1], r: S.bR, strength: S.bStr, mode: S.bMode, aspect: S.aspect });
+  if (!repaintQueued) { repaintQueued = true; requestAnimationFrame(repaintGeometry); }
+}
+/* швидкий шлях: кольори й індекси не чіпаємо, тільки позиції та нормалі */
+function repaintGeometry() {
+  repaintQueued = false;
+  const c = S.cloud, R = S.raw;
+  if (!c || !R) return;
+  S.depth = mixEdit();
+  const n = CORE.buildCloud({
+    depth: S.depth, dw: R.dw, dh: R.dh, rgba: R.frame.data, rw: R.frame.w, rh: R.frame.h,
+    grid: S.grid, aspect: S.aspect, fovY: S.fov, zNear: S.zNear, zFar: S.spread,
+    invert: false, col: c.col
+  });
+  c.pos.set(n.pos); c.disp.set(n.disp);
+  const nr = CORE.gridNormals(c.pos, c.gw, c.gh);
+  c.normals.set(nr);
+  c.slope.set(CORE.slopeCos(c.pos, c.gw, c.gh, nr));
+  for (const g of [c.geo.gp, c.geo.gm, c.geo.gk]) {
+    g.attributes.position.needsUpdate = true;
+    g.attributes.aD.needsUpdate = true;
+    g.attributes.aS.needsUpdate = true;
+    g.attributes.aN.needsUpdate = true;
+    g.computeBoundingSphere();
+  }
+}
+(function initBrush() {
+  const move = e => {
+    if (!S.brush) return;
+    const r = renderer ? renderer.domElement.getBoundingClientRect() : null;
+    if (r) {
+      const px = S.bR * r.height;
+      bcur.style.width = bcur.style.height = px * 2 + 'px';
+      bcur.style.left = (e.clientX - px) + 'px';
+      bcur.style.top = (e.clientY - px) + 'px';
+    }
+    if (painting) { e.preventDefault(); paintAt(e.clientX, e.clientY); }
+  };
+  addEventListener('pointerdown', e => {
+    if (!S.brush || !renderer || !renderer.domElement.contains(e.target)) return;
+    painting = true; paintAt(e.clientX, e.clientY);
+  }, true);
+  addEventListener('pointermove', move, { passive: false, capture: true });
+  addEventListener('pointerup', () => {
+    if (!painting) return;
+    painting = false;
+    if (S.cloud) {                       /* важке — тільки після відпускання */
+      mountFill(S.cloud);
+      const d = CORE.analyzeDepth(S.cloud.disp, S.cloud.gw, S.cloud.gh);
+      d.dropped = droppedShare(S.cloud); d.normClipped = S.cloud.analysis.depth.normClipped;
+      S.cloud.analysis.depth = d;
+      renderAnalysis(); renderExport(); slopeReadout(); pollHist(); drawCurve();
+    }
+  }, true);
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ЗВʼЯЗКИ v5
+   ═══════════════════════════════════════════════════════════════════════ */
+els.tBrush.onclick = () => {
+  if (!S.cloud) return hint('Спершу зніми обʼєм');
+  setBrush(!S.brush);
+};
+els.bReset2.onclick = () => {
+  if (!S.edit) return;
+  S.edit.fill(0);
+  rebuild(); hint('Ручні правки скинуто');
+};
+els.curveRst.onclick = () => {
+  S.curve = [[0, 0], [.25, .25], [.5, .5], [.75, .75], [1, 1]];
+  drawCurve(); if (S.raw) rebuild();
+};
+els.mTest.onclick = testModel;
+seg($('segBMode'), S.bMode, v => { S.bMode = v; });
+seg($('segBack'), S.backdrop, v => { S.backdrop = +v; if (S.cloud) mountFill(S.cloud); });
+seg($('segSkirt'), S.skirt, v => { S.skirt = +v; if (S.cloud) mountFill(S.cloud); });
+slider($('rBR'), $('oBR'), 'bR', v => v.toFixed(2).slice(1));
+slider($('rBS'), $('oBS'), 'bStr', v => v.toFixed(2).slice(1));
+slider($('rDmin'), $('oDmin'), 'dMin', v => v.toFixed(3), null, rebuild);
+slider($('rErode'), $('oErode'), 'erode', v => v.toFixed(0), null, () => S.cloud && mountFill(S.cloud));
+slider($('rSkStep'), $('oSkStep'), 'skirtSteps', v => v.toFixed(0), null, () => S.cloud && mountFill(S.cloud));
+
+/* заповнювачі ховаються разом із хмарою і не лізуть у режим ефіру */
+const _applyVis = applyVisibility;
+applyVisibility = function () {
+  _applyVis();
+  if (fillPts) fillPts.visible = S.mode !== 'live' && S.geom === 'points';
+};
+drawCurve();
+
 </script>
 </body>
 </html>
