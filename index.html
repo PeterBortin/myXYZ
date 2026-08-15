@@ -401,6 +401,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
         <button data-v="128">128</button><button data-v="192">192</button><button data-v="256">256</button><button data-v="320">320</button></div></div>
       <div class="row"><label>Розмір точки</label><input type="range" id="rPt" min="0.4" max="4" step="0.1" value="1.4"><output id="oPt">1.4</output></div>
       <div class="row"><label>Поріг ребра</label><input type="range" id="rEdge" min="0.02" max="0.6" step="0.01" value="0.14"><output id="oEdge">0.14</output></div>
+      <div class="row"><label>Кут відкидання</label><input type="range" id="rSlope" min="30" max="90" step="1" value="82"><output id="oSlope">82°</output></div>
+      <div class="note"><i></i><span>Грані, що стоять до камери рубом, — це не поверхні, а завіси, розтягнуті між планами. 90° лишає все.</span></div>
     </div>
     <div class="grp">
       <h4>Джерело глибини</h4>
@@ -409,6 +411,10 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-ra
       <div class="row"><label>Знак глибини</label><div class="seg" id="segInv">
         <button data-v="0">Пряма</button><button data-v="1">Обернена</button></div></div>
       <div class="row"><label>Згладження</label><input type="range" id="rSm" min="0" max="3" step="1" value="1"><output id="oSm">1</output></div>
+      <div class="row"><label>Guided-радіус</label><input type="range" id="rGuide" min="0" max="8" step="1" value="3"><output id="oGuide">3</output></div>
+      <div class="row"><label>Край ε</label><input type="range" id="rEps" min="0" max="100" step="1" value="45"><output id="oEps">—</output></div>
+      <div class="row"><label>Нормалізація</label><div class="seg" id="segNorm">
+        <button data-v="robust">p2–p98</button><button data-v="minmax">Мін-макс</button></div></div>
       <div class="note"><i></i><span>Люма: пряма = світле ближче. Модель віддає диспаритет — пряма коректна майже завжди; обернена потрібна лише якщо обʼєм вивернувся навиворіт.</span></div>
     </div>
     <div class="grp">
@@ -626,6 +632,114 @@ const CORE = (function () {
     return out;
   }
 
+
+  /* ── робастна нормалізація ───────────────────────────────────────────
+     min-max віддає весь верх діапазону одному спекулярному пікселю.
+     p2–p98 ріже хвости й розтягує те, що справді несе сцену. */
+  function percentiles(arr, ps) {
+    const step = Math.max(1, Math.floor(arr.length / 40000));
+    const sub = [];
+    for (let i = 0; i < arr.length; i += step) sub.push(arr[i]);
+    sub.sort((a, b) => a - b);
+    return ps.map(p => sub[clamp(Math.round(p * (sub.length - 1)), 0, sub.length - 1)]);
+  }
+  function normalizeRobust(arr, loP, hiP) {
+    const [lo, hi] = percentiles(arr, [loP, hiP]);
+    const out = new Float32Array(arr.length);
+    if (hi - lo <= 1e-9) { out.fill(0.5); return { data: out, min: lo, max: hi, flat: true }; }
+    const s = 1 / (hi - lo);
+    let clipped = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const v = (arr[i] - lo) * s;
+      if (v < 0 || v > 1) clipped++;
+      out[i] = v < 0 ? 0 : v > 1 ? 1 : v;
+    }
+    return { data: out, min: lo, max: hi, flat: false, clipped: clipped / arr.length };
+  }
+
+  /* ── guided filter (He, Sun, Tang) ───────────────────────────────────
+     Глибина притискається до країв кольору: q = ā·I + b̄, де a,b — локальна
+     лінійна регресія p на I. Вікна рахуються через інтегральне зображення,
+     тож ціна не залежить від радіуса. Саме це прибирає тераси, не змилюючи
+     силуети — на відміну від будь-якого ізотропного згладження. */
+  function sat(src, w, h) {
+    const S = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let run = 0;
+      for (let x = 0; x < w; x++) { run += src[y * w + x]; S[(y + 1) * (w + 1) + x + 1] = S[y * (w + 1) + x + 1] + run; }
+    }
+    return S;
+  }
+  function boxMean(src, w, h, r) {
+    const S = sat(src, w, h), out = new Float32Array(w * h), W = w + 1;
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h - 1, y + r);
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(w - 1, x + r);
+        const area = (y1 - y0 + 1) * (x1 - x0 + 1);
+        out[y * w + x] = (S[(y1 + 1) * W + x1 + 1] - S[y0 * W + x1 + 1] - S[(y1 + 1) * W + x0] + S[y0 * W + x0]) / area;
+      }
+    }
+    return out;
+  }
+  function guidedFilter(p, I, w, h, r, eps) {
+    if (r < 1) return Float32Array.from(p);
+    const n = w * h;
+    const mI = boxMean(I, w, h, r), mP = boxMean(p, w, h, r);
+    const II = new Float32Array(n), IP = new Float32Array(n);
+    for (let i = 0; i < n; i++) { II[i] = I[i] * I[i]; IP[i] = I[i] * p[i]; }
+    const mII = boxMean(II, w, h, r), mIP = boxMean(IP, w, h, r);
+    const a = new Float32Array(n), b = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const vI = mII[i] - mI[i] * mI[i], cov = mIP[i] - mI[i] * mP[i];
+      a[i] = cov / (vI + eps); b[i] = mP[i] - a[i] * mI[i];
+    }
+    const mA = boxMean(a, w, h, r), mB = boxMean(b, w, h, r);
+    const q = new Float32Array(n);
+    for (let i = 0; i < n; i++) q[i] = mA[i] * I[i] + mB[i];
+    return q;
+  }
+
+  /* ── кут нахилу поверхні до променя зору ─────────────────────────────
+     |cos θ| між нормаллю й променем із камери. 1 — грань дивиться в
+     обʼєктив, 0 — стоїть до нього руба. Саме нулі й дають «завіси»,
+     розтягнуті між переднім і заднім планом. */
+  function slopeCos(pos, gw, gh) {
+    const out = new Float32Array(gw * gh);
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+      const i0 = Math.max(i - 1, 0) , i1 = Math.min(i + 1, gw - 1);
+      const j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, gh - 1);
+      const A = (j * gw + i0) * 3, B = (j * gw + i1) * 3, C = (j0 * gw + i) * 3, D = (j1 * gw + i) * 3, P = (j * gw + i) * 3;
+      const ux = pos[B] - pos[A], uy = pos[B + 1] - pos[A + 1], uz = pos[B + 2] - pos[A + 2];
+      const vx = pos[D] - pos[C], vy = pos[D + 1] - pos[C + 1], vz = pos[D + 2] - pos[C + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const px = pos[P], py = pos[P + 1], pz = pos[P + 2];
+      const ln = Math.sqrt(nx * nx + ny * ny + nz * nz), lp = Math.sqrt(px * px + py * py + pz * pz);
+      out[j * gw + i] = (ln < 1e-12 || lp < 1e-12) ? 0 : Math.min(1, Math.abs((nx * px + ny * py + nz * pz) / (ln * lp)));
+    }
+    return out;
+  }
+
+  /* лишаємо тільки те, що реально видно: вікно глибини + поріг нахилу */
+  function filterCloud(pos, col, disp, slope, count, o) {
+    const keep = new Uint8Array(count);
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+      if (disp[i] < o.winN || disp[i] > o.winF) continue;
+      if (slope && slope[i] < o.slopeMin) continue;
+      keep[i] = 1; n++;
+    }
+    const P = new Float32Array(n * 3), C = new Uint8Array(n * 3);
+    let k = 0;
+    for (let i = 0; i < count; i++) {
+      if (!keep[i]) continue;
+      P[k * 3] = pos[i * 3]; P[k * 3 + 1] = pos[i * 3 + 1]; P[k * 3 + 2] = pos[i * 3 + 2];
+      C[k * 3] = col[i * 3]; C[k * 3 + 1] = col[i * 3 + 1]; C[k * 3 + 2] = col[i * 3 + 2];
+      k++;
+    }
+    return { pos: P, col: C, count: n, dropped: count - n };
+  }
+
   /* ── статистика ───────────────────────────────────────────────────── */
   function histogram(v, count, bins) {
     const h = new Uint32Array(bins);
@@ -801,13 +915,15 @@ const CORE = (function () {
       if (d.planes >= 3) v.push({ level: 'ok', t: 'Багатоплановість', x: 'Гістограма дає ' + d.planes + ' виражені плани — вікном глибини можна вирізати кожен окремо.' });
       if (d.edgeDensity > 0.22) v.push({ level: 'ok', t: 'Насичені контури', x: pc(d.edgeDensity) + ' точок на розривах. Сцена деталізована.' });
     }
-    if (src === 'luma') v.push({ level: 'warn', t: 'Джерело — яскравість', x: 'Це рельєф, а не глибина: світле читається як близьке. Модель не завантажилась або вимкнена вручну.' });
+    if (src === 'luma') v.push({ level: 'warn', t: 'Джерело — яскравість', x: 'Це рельєф, а не глибина: світле читається як близьке. Guided-фільтр тут майже без ефекту — сигнал і поводир це те саме зображення, нової інформації взяти нізвідки.' });
+    if (d && d.dropped > 0.25) v.push({ level: 'warn', t: 'Багато відкинуто по куту', x: (d.dropped * 100).toFixed(0) + '% точок сховано як руба до камери. Якщо зникло потрібне — підніми кут відкидання.' });
     if (!v.length) v.push({ level: 'ok', t: 'Чисто', x: 'Порогів не перетнуто. Кадр придатний для захоплення.' });
     return v;
   }
 
   return {
     clamp, lerp, dispToZ, zToDisp, unproject, sampleBilinear, resample, smooth, normalize,
+    percentiles, normalizeRobust, sat, boxMean, guidedFilter, slopeCos, filterCloud,
     grayscale, lumaDisparity, buildCloud, buildIndex, centroid, bbox, writePLY,
     histogram, stats, countPlanes, noiseSigma, laplacianVar, cct, palette,
     analyzeFrame, analyzeDepth, verdicts, hex
@@ -830,6 +946,12 @@ const S = {
   edgeTol: 0.14,
   smooth: 1,
   invert: 0,
+  guideR: 3,               // радіус guided-фільтра, 0 = вимкнено
+  epsK: 45,                // повзунок ε у логарифмічній шкалі
+  norm: 'robust',          // robust | minmax
+  slopeMax: 82,            // градуси: більше — м'якше відкидання. Похилий стіл під
+                           // гострим кутом теж «майже завіса», тож дефолт консервативний
+  raw: null,               // сирий кадр + сира глибина для перезбірки без пересъйомки
   srcPref: 'model',        // model | luma
   scale: 100,              // калібрування міри
   win: { n: 0.0, f: 1.0 }, // вікно глибини в диспаритеті
@@ -844,7 +966,7 @@ const els = {};
  'tGeom','tagGeom','tPal','tagPal','tCfg','tAn','anDot','hint','dwBox','hist','dwBand','dwNear','dwFar',
  'dwVal','fx','ruler','bReset','bShot','shotBar','bExp','toasts','scrim','sheet','tabCfg','tabAn','tabEx',
  'paneCfg','paneAn','paneEx','anEmpty','anBody','exEmpty','exBody','exKv','exPlyN','exGlbN',
- 'exPly','exGlb','exPng','exJson','shotLbl','vid']
+ 'exPly','exGlb','exPng','exJson','shotLbl','oSlope','vid']
   .forEach(k => els[k] = $(k));
 { const miss = Object.keys(els).filter(k => !els[k]);
   if (miss.length) { document.body.insertAdjacentHTML('afterbegin',
@@ -926,10 +1048,10 @@ const VS_LIVE = GLSL_COMMON + VS_HEAD + `
 
 /* обʼєм: глибина вже порахована — приходить атрибутом */
 const VS_CLOUD = GLSL_COMMON + `
-  uniform float uPtScale,uResY,uWinN,uWinF,uTanHalf;
-  attribute vec3 aColor; attribute float aD;
+  uniform float uPtScale,uResY,uWinN,uWinF,uTanHalf,uSlopeMin;
+  attribute vec3 aColor; attribute float aD; attribute float aS;
   void main(){
-    if(aD<uWinN||aD>uWinF){ gl_Position=vec4(0.0); return; }
+    if(aD<uWinN||aD>uWinF||aS<uSlopeMin){ gl_Position=vec4(0.0); return; }
     vD=aD; vCol=aColor; vZ=-position.z;
     vec4 mv=modelViewMatrix*vec4(position,1.0);
     gl_Position=projectionMatrix*mv;
@@ -940,6 +1062,7 @@ const uni = () => ({
   uZNear:{value:S.zNear}, uZFar:{value:S.spread}, uTanHalf:{value:Math.tan(S.fov*Math.PI/360)},
   uAspect:{value:S.aspect}, uPtScale:{value:S.ptSize}, uResY:{value:800},
   uWinN:{value:S.win.n}, uWinF:{value:S.win.f}, uInvert:{value:S.invert},
+  uSlopeMin:{value:Math.cos(S.slopeMax*Math.PI/180)},
   uPal:{value:S.pal}, uBands:{value:22}, uIsPoints:{value:1},
   uTex:{value:null}, uTexel:{value:new THREE.Vector2(1/512,1/512)},
   uSmooth:{value:S.smooth}, uEdgeTol:{value:S.edgeTol}
@@ -983,6 +1106,7 @@ function syncUniforms() {
     u.uTanHalf.value = tanH; u.uAspect.value = S.aspect;
     u.uPtScale.value = S.ptSize; u.uWinN.value = S.win.n; u.uWinF.value = S.win.f;
     u.uInvert.value = S.invert; u.uPal.value = S.pal;
+    u.uSlopeMin.value = S.slopeMax >= 90 ? -1 : Math.cos(S.slopeMax * Math.PI / 180);
     u.uResY.value = renderer ? renderer.domElement.height : 800;
     if (u.uSmooth) { u.uSmooth.value = S.smooth; u.uEdgeTol.value = S.edgeTol; }
     if (u.uTex && videoTex && o.material.vertexShader === VS_LIVE) u.uTex.value = videoTex;
@@ -1154,6 +1278,7 @@ function layoutWin() {
   els.dwBand.style.height = Math.max(0, yF - yN) + 'px';
   els.dwVal.innerHTML = Math.round(S.win.n * 100) + '<small>—</small>' + Math.round(S.win.f * 100);
   syncUniforms(); drawHist();
+  if (typeof slopeReadout === 'function' && S.cloud) { slopeReadout(); renderExport(); }
 }
 (function initWin() {
   let grab = null;
@@ -1236,8 +1361,8 @@ async function getPipe(onProg) {
   throw last || new Error('pipeline недоступний');
 }
 
-/* → Float32 диспаритет 0..1 (1 = ближче), розміром dw×dh */
-async function modelDepth(frame, onProg) {
+/* → сирий тензор моделі (без нормалізації), розміром dw×dh */
+async function modelDepthRaw(frame, onProg) {
   const small = downscale(frame, 518);
   const url = small.canvas.toDataURL('image/jpeg', 0.94);
   const pipe = await getPipe(onProg);
@@ -1248,15 +1373,64 @@ async function modelDepth(frame, onProg) {
   const dw = dims.length >= 2 ? dims[dims.length - 1] : small.w;
   const raw = t.data ? Float32Array.from(t.data) : Float32Array.from(out.depth.data);
   if (raw.length !== dw * dh) throw new Error('розмір тензора ' + raw.length + ' ≠ ' + dw + '×' + dh);
-  const nrm = CORE.normalize(raw);
-  if (nrm.flat) throw new Error('модель повернула плоску мапу');
-  return { data: CORE.smooth(nrm.data, dw, dh, S.smooth), dw, dh };
+  if (CORE.normalize(raw).flat) throw new Error('модель повернула плоску мапу');
+  return { data: raw, dw, dh };
 }
 
-function lumaDepth(frame) {
+function lumaRaw(frame) {
   const small = downscale(frame, 384);
-  const d = CORE.lumaDisparity(small.data, small.w, small.h, Math.max(1, S.smooth));
-  return { data: CORE.normalize(d).data, dw: small.w, dh: small.h };
+  return { data: CORE.grayscale(small.data, small.w, small.h), dw: small.w, dh: small.h };
+}
+
+/* ── ланцюг обробки глибини ───────────────────────────────────────────
+   сире → нормалізація (робастна або мін-макс) → біноміальне згладження
+   → guided-фільтр по яскравості кадру → кліп. Кожен крок керується
+   повзунком і перераховується без нової зйомки. */
+function composeDepth() {
+  const R = S.raw;
+  const n = S.norm === 'robust' ? CORE.normalizeRobust(R.depth, 0.02, 0.98) : CORE.normalize(R.depth);
+  let d = n.data;
+  if (S.smooth > 0) d = CORE.smooth(d, R.dw, R.dh, S.smooth);
+  if (S.guideR > 0) d = CORE.guidedFilter(d, R.guide, R.dw, R.dh, S.guideR | 0, epsOf());
+  for (let i = 0; i < d.length; i++) d[i] = d[i] < 0 ? 0 : d[i] > 1 ? 1 : d[i];
+  return { data: d, clipped: n.clipped || 0 };
+}
+const epsOf = () => Math.pow(10, -4 + 3 * (S.epsK / 100));
+
+/* перезбірка хмари з уже знятого кадру — без камери й без моделі */
+function buildFromRaw(fresh) {
+  const R = S.raw; if (!R) return;
+  const t0 = performance.now();
+  const dep = composeDepth();
+  const c = CORE.buildCloud({
+    depth: dep.data, dw: R.dw, dh: R.dh,
+    rgba: R.frame.data, rw: R.frame.w, rh: R.frame.h,
+    grid: S.grid, aspect: S.aspect, fovY: S.fov,
+    zNear: S.zNear, zFar: S.spread, invert: S.invert
+  });
+  c.src = R.src;
+  c.slope = CORE.slopeCos(c.pos, c.gw, c.gh);
+  c.stamp = fresh || !S.cloud ? new Date() : S.cloud.stamp;
+  c.ms = Math.round(performance.now() - t0);
+  c.frameStats = fresh || !S.cloud ? CORE.analyzeFrame(R.small.data, R.small.w, R.small.h) : S.cloud.frameStats;
+  const dstat = CORE.analyzeDepth(c.disp, c.gw, c.gh);
+  dstat.dropped = droppedShare(c);
+  dstat.normClipped = dep.clipped;
+  c.analysis = { frame: c.frameStats, depth: dstat };
+  c.analysis.verdicts = CORE.verdicts(c.frameStats, dstat, c.src);
+  S.cloud = c;
+  mountCloud(c); renderAnalysis(); renderExport(); slopeReadout();
+  return c;
+}
+function slopeMinCos() { return S.slopeMax >= 90 ? -1 : Math.cos(S.slopeMax * Math.PI / 180); }
+function droppedShare(c) {
+  const m = slopeMinCos();
+  let n = 0;
+  for (let i = 0; i < c.count; i++) if (c.disp[i] < S.win.n || c.disp[i] > S.win.f || c.slope[i] < m) n++;
+  return n / c.count;
+}
+function slopeReadout() {
+  els.oSlope.textContent = S.slopeMax + '°' + (S.cloud ? ' · −' + (droppedShare(S.cloud) * 100).toFixed(0) + '%' : '');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1274,12 +1448,12 @@ async function capture() {
   navigator.vibrate && navigator.vibrate(12);
 
   const frame = grabFrame(1280);
-  let dep, src = 'luma';
+  let raw, src = 'luma';
   try {
     if (S.srcPref === 'model' && !modelDead) {
       els.shotLbl.textContent = chatter();
       setP(0.12, 'МОДЕЛЬ');
-      dep = await modelDepth(frame, (p, dev) => { setP(0.12 + p * 0.6, 'ВАГИ ' + Math.round(p * 100) + '% · ' + dev.toUpperCase()); });
+      raw = await modelDepthRaw(frame, (p, dev) => { setP(0.12 + p * 0.6, 'ВАГИ ' + Math.round(p * 100) + '% · ' + dev.toUpperCase()); });
       src = 'model';
       setP(0.78, 'ГЛИБИНА');
     } else throw new Error('luma');
@@ -1288,33 +1462,21 @@ async function capture() {
       modelDead = true;
       toast('Модель не піднялась (' + (e.message || e) + '). Падаю на яскравість — це рельєф, не глибина.', 'warn');
     }
-    dep = lumaDepth(frame);
+    raw = lumaRaw(frame);
     src = 'luma';
     setP(0.78, 'РЕЛЬЄФ');
   }
 
   els.shotLbl.textContent = chatter();
+  setP(0.86, 'ФІЛЬТР');
   await new Promise(r => setTimeout(r, 16));
-  const cloud = CORE.buildCloud({
-    depth: dep.data, dw: dep.dw, dh: dep.dh,
-    rgba: frame.data, rw: frame.w, rh: frame.h,
-    grid: S.grid, aspect: S.aspect, fovY: S.fov,
-    zNear: S.zNear, zFar: S.spread, invert: S.invert
-  });
-  cloud.src = src;
-  setP(0.9, 'АНАЛІЗ');
-
-  const small = downscale(frame, 320);
-  cloud.analysis = {
-    frame: CORE.analyzeFrame(small.data, small.w, small.h),
-    depth: CORE.analyzeDepth(cloud.disp, cloud.gw, cloud.gh)
+  /* поводир guided-фільтра — яскравість самого кадру, зведена в сітку глибини */
+  S.raw = {
+    depth: raw.data, dw: raw.dw, dh: raw.dh, src, frame,
+    small: downscale(frame, 320),
+    guide: CORE.resample(CORE.grayscale(frame.data, frame.w, frame.h), frame.w, frame.h, raw.dw, raw.dh)
   };
-  cloud.analysis.verdicts = CORE.verdicts(cloud.analysis.frame, cloud.analysis.depth, src);
-  cloud.stamp = new Date();
-  S.cloud = cloud;
-
-  mountCloud(cloud);
-  renderAnalysis(); renderExport();
+  const cloud = buildFromRaw(true);
   setP(1, 'ГОТОВО');
   setTimeout(() => setP(0), 500);
   els.bShot.classList.remove('busy');
@@ -1328,7 +1490,7 @@ async function capture() {
   setMode('view');
   navigator.vibrate && navigator.vibrate([10, 40, 18]);
   toast((src === 'model' ? 'Обʼєм із моделі' : 'Рельєф із яскравості') + ' · ' +
-    (cloud.count / 1000).toFixed(0) + 'K точок · ' + cloud.analysis.depth.planes + ' планів');
+    (cloud.count / 1000).toFixed(0) + 'K точок · ' + cloud.analysis.depth.planes + ' планів · ' + cloud.ms + ' мс');
 }
 
 function mountCloud(c) {
@@ -1336,11 +1498,12 @@ function mountCloud(c) {
   const pos = new THREE.BufferAttribute(c.pos, 3);
   const col = new THREE.BufferAttribute(Float32Array.from(c.col, v => v / 255), 3);
   const dd = new THREE.BufferAttribute(c.disp, 1);
+  const ss = new THREE.BufferAttribute(c.slope, 1);
 
   const gp = new THREE.BufferGeometry();
-  gp.setAttribute('position', pos); gp.setAttribute('aColor', col); gp.setAttribute('aD', dd);
+  gp.setAttribute('position', pos); gp.setAttribute('aColor', col); gp.setAttribute('aD', dd); gp.setAttribute('aS', ss);
   const gm = new THREE.BufferGeometry();
-  gm.setAttribute('position', pos); gm.setAttribute('aColor', col); gm.setAttribute('aD', dd);
+  gm.setAttribute('position', pos); gm.setAttribute('aColor', col); gm.setAttribute('aD', dd); gm.setAttribute('aS', ss);
   gm.setIndex(new THREE.BufferAttribute(CORE.buildIndex(c.pos, c.gw, c.gh, S.edgeTol), 1));
   gp.computeBoundingSphere(); gm.computeBoundingSphere();
 
@@ -1455,6 +1618,8 @@ function renderAnalysis() {
         <span>Планів у сцені</span><b>${d.planes}</b>
         <span>Точок на розривах</span><b>${pc(d.edgeDensity)}</b>
         <span>Летючі пікселі</span><b class="${cls(d.flyingPct, .01, .03)}">${pc(d.flyingPct)}</b>
+        <span>Відкинуто (вікно + кут)</span><b class="${cls(d.dropped || 0, .25, .5)}">${pc(d.dropped || 0)}</b>
+        <span>Зрізано нормалізацією</span><b>${pc(d.normClipped || 0)}</b>
         <span>Габарит (у.о.)</span><b>${c.bbox.size.map(v => v.toFixed(2)).join(' × ')}</b>
       </div>
     </div>
@@ -1483,16 +1648,25 @@ function drawRGBHist(h) {
    ЕКСПОРТ
    ═══════════════════════════════════════════════════════════════════════ */
 const fmtB = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : (n / 1024).toFixed(0) + ' КБ';
+/* у файл іде рівно те, що видно на екрані: вікно глибини + поріг нахилу */
+function visibleCloud() {
+  const c = S.cloud;
+  return CORE.filterCloud(c.pos, c.col, c.disp, c.slope, c.count,
+    { winN: S.win.n, winF: S.win.f, slopeMin: slopeMinCos() });
+}
 function renderExport() {
   const c = S.cloud; if (!c) return;
   els.exEmpty.classList.add('hide'); els.exBody.classList.remove('hide');
-  els.exPlyN.textContent = fmtB(c.count * 15 + 220);
-  els.exGlbN.textContent = fmtB(c.count * 24 + 2048);
+  const v = visibleCloud();
+  els.exPlyN.textContent = fmtB(v.count * 15 + 220);
+  els.exGlbN.textContent = fmtB(v.count * 24 + 2048);
   els.exKv.innerHTML = `
-    <span>Вершин</span><b>${c.count.toLocaleString('uk')}</b>
+    <span>Видимих вершин</span><b>${v.count.toLocaleString('uk')} з ${c.count.toLocaleString('uk')}</b>
     <span>Трикутників у меші</span><b>${(cloudMesh.geometry.index.count / 3).toLocaleString('uk')}</b>
     <span>Джерело глибини</span><b>${c.src === 'model' ? 'модель' : 'яскравість'}</b>
-    <span>Габарит (у.о.)</span><b>${c.bbox.size.map(v => v.toFixed(2)).join(' × ')}</b>`;
+    <span>Guided r / ε</span><b>${S.guideR || '—'} / ${epsOf().toExponential(1)}</b>
+    <span>Кут відкидання</span><b>${S.slopeMax}°</b>
+    <span>Габарит (у.о.)</span><b>${c.bbox.size.map(x => x.toFixed(2)).join(' × ')}</b>`;
 }
 async function saveFile(blob, name) {
   try {
@@ -1508,20 +1682,26 @@ const stampName = ext => 'myXYZ_' + new Date().toISOString().replace(/[-:T]/g, '
 
 async function exportPLY() {
   const c = S.cloud; if (!c) return;
-  const bytes = CORE.writePLY(c.pos, c.col, c.count,
-    'myXYZ v4 · src=' + c.src + ' · grid=' + c.gw + 'x' + c.gh + ' · scale-ambiguous', c.centroid);
+  const v = visibleCloud();
+  if (!v.count) return toast('Видимих точок нема — вікно глибини або кут відкидання зрізали все.', 'warn');
+  const bytes = CORE.writePLY(v.pos, v.col, v.count,
+    'myXYZ v4 · src=' + c.src + ' · grid=' + c.gw + 'x' + c.gh +
+    ' · guided r=' + S.guideR + ' eps=' + epsOf().toExponential(1) +
+    ' · slope<=' + S.slopeMax + 'deg · scale-ambiguous', c.centroid);
   await saveFile(new Blob([bytes], { type: 'application/octet-stream' }), stampName('ply'));
-  toast('PLY віддано · ' + fmtB(bytes.length));
+  toast('PLY віддано · ' + v.count.toLocaleString('uk') + ' точок · ' + fmtB(bytes.length));
 }
 async function exportGLB() {
   const c = S.cloud; if (!c) return;
-  toast('Пакую GLB…');
+  const vis = visibleCloud();
+  if (!vis.count) return toast('Видимих точок нема — послаб вікно або кут відкидання.', 'warn');
   const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+  toast('Пакую GLB…');
   const g = new THREE.BufferGeometry();
-  const p = Float32Array.from(c.pos);
-  for (let i = 0; i < c.count; i++) { p[i * 3] -= c.centroid[0]; p[i * 3 + 1] -= c.centroid[1]; p[i * 3 + 2] -= c.centroid[2]; }
+  const p = Float32Array.from(vis.pos);
+  for (let i = 0; i < vis.count; i++) { p[i * 3] -= c.centroid[0]; p[i * 3 + 1] -= c.centroid[1]; p[i * 3 + 2] -= c.centroid[2]; }
   g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(Float32Array.from(c.col, v => v / 255), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(Float32Array.from(vis.col, v => v / 255), 3));
   const obj = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.01, vertexColors: true }));
   obj.name = 'myXYZ_cloud';
   new GLTFExporter().parse(obj, res => {
@@ -1538,7 +1718,9 @@ function exportJSON() {
   const c = S.cloud; if (!c) return;
   const o = {
     app: 'myXYZ v4', stamp: c.stamp.toISOString(), source: c.src,
-    grid: [c.gw, c.gh], count: c.count, fovY: S.fov, zNear: S.zNear, zFar: S.spread,
+    grid: [c.gw, c.gh], count: c.count, visible: visibleCloud().count,
+    filters: { normalize: S.norm, smooth: S.smooth, guidedR: S.guideR, guidedEps: epsOf(), slopeMaxDeg: S.slopeMax },
+    fovY: S.fov, zNear: S.zNear, zFar: S.spread,
     scaleAmbiguous: true, bbox: c.bbox, frame: c.analysis.frame, depth: c.analysis.depth,
     verdicts: c.analysis.verdicts
   };
@@ -1577,14 +1759,17 @@ function seg(box, val, fn) {
     b.onclick = () => { fn(b.dataset.v); seg(box, b.dataset.v, fn); };
   });
 }
-function slider(inp, out, key, fmt, after) {
+function slider(inp, out, key, fmt, after, heavy) {
   const set = () => {
     S[key] = parseFloat(inp.value);
-    out.textContent = fmt ? fmt(S[key]) : inp.value;
+    if (out) out.textContent = fmt ? fmt(S[key]) : inp.value;
     syncUniforms(); after && after();
   };
-  inp.addEventListener('input', set); set();
+  inp.addEventListener('input', set);
+  if (heavy) inp.addEventListener('change', () => { if (S.raw) { hint('Перезбираю хмару…'); setTimeout(heavy, 20); } });
+  set();
 }
+const rebuild = () => { const c = buildFromRaw(false); if (c) hint('Перезібрано за ' + c.ms + ' мс'); };
 
 /* ── звʼязки ─────────────────────────────────────────────────────────── */
 els.bootBtn.onclick = start;
@@ -1620,18 +1805,23 @@ els.bReset.onclick = () => {
 els.exPly.onclick = exportPLY; els.exGlb.onclick = exportGLB;
 els.exPng.onclick = exportPNG; els.exJson.onclick = exportJSON;
 
-slider($('rSpread'), $('oSpread'), 'spread', v => v.toFixed(1), () => { if (ctl) ctl.target.z = S.mode === 'live' ? -S.spread * .5 : ctl.target.z; });
-slider($('rFov'), $('oFov'), 'fov', v => v.toFixed(0) + '°', () => renderer && fitCamera());
+slider($('rSpread'), $('oSpread'), 'spread', v => v.toFixed(1),
+  () => { if (ctl) ctl.target.z = S.mode === 'live' ? -S.spread * .5 : ctl.target.z; }, rebuild);
+slider($('rFov'), $('oFov'), 'fov', v => v.toFixed(0) + '°', () => renderer && fitCamera(), rebuild);
 slider($('rPt'), $('oPt'), 'ptSize', v => v.toFixed(1));
+slider($('rSlope'), null, 'slopeMax', null, () => { slopeReadout(); if (S.cloud) renderExport(); });
+slider($('rGuide'), $('oGuide'), 'guideR', v => v ? v.toFixed(0) + ' px' : 'вимк', null, rebuild);
+slider($('rEps'), $('oEps'), 'epsK', () => epsOf().toExponential(1), null, rebuild);
 slider($('rEdge'), $('oEdge'), 'edgeTol', v => v.toFixed(2), () => {
   if (S.cloud && cloudMesh) {
     cloudMesh.geometry.setIndex(new THREE.BufferAttribute(CORE.buildIndex(S.cloud.pos, S.cloud.gw, S.cloud.gh, S.edgeTol), 1));
     renderExport();
   }
 });
-slider($('rSm'), $('oSm'), 'smooth', v => v.toFixed(0));
+slider($('rSm'), $('oSm'), 'smooth', v => v.toFixed(0), null, rebuild);
 slider($('rScale'), $('oScale'), 'scale', v => '×' + v.toFixed(0));
-seg($('segGrid'), S.grid, v => { S.grid = +v; if (renderer) buildLive(); hint('Сітка ' + v + ' — перезніми, щоб застосувати до обʼєму'); });
+seg($('segGrid'), S.grid, v => { S.grid = +v; if (renderer) buildLive(); if (S.raw) rebuild(); else hint('Сітка ' + v); });
+seg($('segNorm'), S.norm, v => { S.norm = v; if (S.raw) rebuild(); });
 seg($('segSrc'), S.srcPref, v => { S.srcPref = v; if (v === 'model') modelDead = false; });
 seg($('segInv'), S.invert, v => { S.invert = +v; syncUniforms(); pollHist(); });
 
