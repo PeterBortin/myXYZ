@@ -313,6 +313,17 @@ table.blobs td b{color:var(--accent);font-weight:400}
       <div class="note"><i></i><span>Подовження відсіює калюжі й темні плями фарби: справжня тінь витягнута вздовж одного напрямку, і всі тіні в кадрі паралельні.</span></div>
     </div>
     <div class="grp">
+      <h4>Shape from shading</h4>
+      <div class="row"><label>Джерело рельєфу</label><div class="seg" id="segRelief">
+        <button data-v="shadow">Тіні</button><button data-v="prior">Апріор</button>
+        <button data-v="sfs">SfS</button><button data-v="fused">Разом</button></div></div>
+      <div class="row"><label>Роздільність</label><input type="range" id="rSfsRes" min="96" max="384" step="32" value="192"><output id="oSfsRes">192</output></div>
+      <div class="row"><label>Кошики кольору</label><input type="range" id="rBins" min="4" max="20" step="1" value="10"><output id="oBins">10</output></div>
+      <div class="row"><label>Сліпий поріг</label><input type="range" id="rEps" min="0.002" max="0.15" step="0.002" value="0.02"><output id="oEps">0.020</output></div>
+      <div class="row"><label>Смуга злиття</label><input type="range" id="rFuseCut" min="0.05" max="0.8" step="0.05" value="0.25"><output id="oFuseCut">0.25</output></div>
+      <div class="note"><i></i><span>Уздовж напрямку світла яскравість несе нахил, упоперек — нічого. Сліпий поріг задає ширину цієї мертвої смуги, а апріор її затикає. Альбедо вирівнюється по кошиках кольоровості: однаковий матеріал ділить одне ρ.</span></div>
+    </div>
+    <div class="grp">
       <h4>Апріор глибини <em>для щільного рельєфу</em></h4>
       <div class="row"><label>Модель</label><div class="seg" id="segModel">
         <button data-v="1">Увімк</button><button data-v="0">Вимк</button></div></div>
@@ -627,11 +638,281 @@ const CORE = (function () {
     return { min: mn, max: mx, mean: s / n, median: sub[sub.length >> 1] };
   }
 
+
+  /* ═══════════════════════════════════════════════════════════════════
+     FFT. Ітеративний Кулі–Тьюкі за основою 2. Уся математика рельєфу
+     живе в частотній області, бо там і похідна, і інтегрування — це
+     множення й ділення на iω, без жодної ітеративної релаксації.
+     ═══════════════════════════════════════════════════════════════════ */
+  const pow2 = n => { let p = 1; while (p < n) p <<= 1; return p; };
+
+  function fft1d(re, im, inv) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = (inv ? 2 : -2) * Math.PI / len, half = len >> 1;
+      const wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        for (let j = 0; j < half; j++) {
+          const a = i + j, b = a + half;
+          const vr = re[b] * cr - im[b] * ci, vi = re[b] * ci + im[b] * cr;
+          re[b] = re[a] - vr; im[b] = im[a] - vi;
+          re[a] += vr; im[a] += vi;
+          const nc = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nc;
+        }
+      }
+    }
+    if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+  }
+  function fft2d(re, im, w, h, inv) {
+    const rr = new Float64Array(w), ri = new Float64Array(w);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) { rr[x] = re[y * w + x]; ri[x] = im[y * w + x]; }
+      fft1d(rr, ri, inv);
+      for (let x = 0; x < w; x++) { re[y * w + x] = rr[x]; im[y * w + x] = ri[x]; }
+    }
+    const cr = new Float64Array(h), ci = new Float64Array(h);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) { cr[y] = re[y * w + x]; ci[y] = im[y * w + x]; }
+      fft1d(cr, ci, inv);
+      for (let y = 0; y < h; y++) { re[y * w + x] = cr[y]; im[y * w + x] = ci[y]; }
+    }
+  }
+  /* дзеркальне доповнення до степеня двійки: різкий стик країв інакше
+     розмазується по всьому спектру й вилазить хвилями по краях рельєфу */
+  function padMirror(a, w, h, W, H) {
+    const o = new Float64Array(W * H);
+    const mir = (i, n) => { i = ((i % (2 * n)) + 2 * n) % (2 * n); return i < n ? i : 2 * n - 1 - i; };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) o[y * W + x] = a[mir(y, h) * w + mir(x, w)];
+    return o;
+  }
+  const cropTo = (a, W, w, h) => {
+    const o = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) o[y * w + x] = a[y * W + x];
+    return o;
+  };
+  const freq = (i, n) => 2 * Math.PI * (i < n / 2 ? i : i - n) / n;
+
+  /* ═══════════════════════════════════════════════════════════════════
+     ЛІНІЙНИЙ SfS ПЕНТЛЕНДА. Ламберт, лінеаризований навколо p=q=0:
+        I ≈ cos σ − p·sin σ·cos τ − q·sin σ·sin τ
+     У частотній області p → iωx·Z, тому
+        Z(ω) = i·F{I}(ω) / [ sin σ·(ωx·cos τ + ωy·sin τ) ]
+     Знаменник занулюється на частотах, перпендикулярних до нахилу
+     світла: там про рельєф інформації нема взагалі, і ми чесно
+     ставимо нуль замість того, щоб ділити й отримувати шум.
+     ═══════════════════════════════════════════════════════════════════ */
+  function pentlandSfS(I, w, h, tiltDeg, slantDeg, eps) {
+    const W = pow2(w), H = pow2(h);
+    const re = padMirror(I, w, h, W, H), im = new Float64Array(W * H);
+    let m = 0; for (let i = 0; i < re.length; i++) m += re[i];
+    m /= re.length;
+    for (let i = 0; i < re.length; i++) re[i] -= m;
+    fft2d(re, im, W, H, false);
+    const ct = Math.cos(tiltDeg * RAD), st = Math.sin(tiltDeg * RAD);
+    const ss = Math.sin(slantDeg * RAD) || 1e-6;
+    const cut = eps === undefined ? 1e-3 : eps;
+    let killed = 0;
+    for (let v = 0; v < H; v++) {
+      const wy = freq(v, H);
+      for (let u = 0; u < W; u++) {
+        const k = v * W + u, d = ss * (freq(u, W) * ct + wy * st);
+        if (Math.abs(d) < cut) { re[k] = 0; im[k] = 0; killed++; continue; }
+        const a = re[k], b = im[k];
+        re[k] = -b / d; im[k] = a / d;        /* множення на i та ділення на d */
+      }
+    }
+    fft2d(re, im, W, H, true);
+    return { z: cropTo(re, W, w, h), blindShare: killed / (W * H), padded: [W, H] };
+  }
+
+  /* Френкот–Челлаппа: найближче інтегровне поле до заданого (p,q).
+     Z = (−i·ωx·P − i·ωy·Q) / (ωx² + ωy²) */
+  function frankotChellappa(p, q, w, h) {
+    const W = pow2(w), H = pow2(h);
+    const pr = padMirror(p, w, h, W, H), pi = new Float64Array(W * H);
+    const qr = padMirror(q, w, h, W, H), qi = new Float64Array(W * H);
+    fft2d(pr, pi, W, H, false); fft2d(qr, qi, W, H, false);
+    const zr = new Float64Array(W * H), zi = new Float64Array(W * H);
+    for (let v = 0; v < H; v++) {
+      const wy = freq(v, H);
+      for (let u = 0; u < W; u++) {
+        const k = v * W + u, wx = freq(u, W), den = wx * wx + wy * wy;
+        if (den < 1e-12) continue;
+        /* (−i·wx)(pr+i·pi) = wx·pi − i·wx·pr */
+        zr[k] = (wx * pi[k] + wy * qi[k]) / den;
+        zi[k] = (-wx * pr[k] - wy * qr[k]) / den;
+      }
+    }
+    fft2d(zr, zi, W, H, true);
+    return cropTo(zr, W, w, h);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     АЛЬБЕДО. У сегменті сталого кольору вважаємо відбивну здатність
+     сталою: I = ρ·S, і поділивши на оцінку ρ, лишаємо саме затінення.
+     Сегмент — це кошик кольоровості, а не звʼязна пляма: однаковий
+     матеріал в різних кутах кадру мусить ділити одне ρ.
+     ═══════════════════════════════════════════════════════════════════ */
+  function albedoNormalize(rgba, w, h, bins, minArea) {
+    const B = Math.max(2, bins | 0), n = w * h;
+    const lab = new Int32Array(n), I = new Float32Array(n);
+    const sum = new Float64Array(B * B), cnt = new Int32Array(B * B);
+    let gsum = 0;
+    for (let i = 0, p = 0; i < n; i++, p += 4) {
+      const r = rgba[p], g = rgba[p + 1], b = rgba[p + 2];
+      const s = r + g + b + 1;
+      const ci = Math.min(B - 1, (r / s * B) | 0) * B + Math.min(B - 1, (g / s * B) | 0);
+      const v = (r + g + b) / 765;
+      lab[i] = ci; I[i] = v; sum[ci] += v; cnt[ci]++; gsum += v;
+    }
+    const gmean = gsum / n || 1;
+    const out = new Float32Array(n);
+    let used = 0;
+    for (let i = 0; i < B * B; i++) if (cnt[i] >= (minArea || 1)) used++;
+    for (let i = 0; i < n; i++) {
+      const c = lab[i];
+      const rho = cnt[c] >= (minArea || 1) ? sum[c] / cnt[c] : gmean;
+      out[i] = I[i] * (gmean / Math.max(rho, 1e-4));
+    }
+    return { data: out, labels: lab, segments: used, raw: I, gmean };
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     НЕОДНОЗНАЧНІСТЬ БАРЕЛЬЄФА: z' = λz + μx + νy + c. Саме її ламають
+     тіні, бо довжина тіні змінюється разом із λ, а зображення — ні.
+     ═══════════════════════════════════════════════════════════════════ */
+  function basRelief(z, w, h, lam, mu, nu, c) {
+    const o = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+      o[y * w + x] = lam * z[y * w + x] + mu * (x / w) + nu * (y / h) + (c || 0);
+    return o;
+  }
+  function solveLin(A, b, n) {
+    const M = [];
+    for (let i = 0; i < n; i++) M.push([...A.slice(i * n, i * n + n), b[i]]);
+    for (let i = 0; i < n; i++) {
+      let piv = i;
+      for (let k = i + 1; k < n; k++) if (Math.abs(M[k][i]) > Math.abs(M[piv][i])) piv = k;
+      if (Math.abs(M[piv][i]) < 1e-12) return null;
+      [M[i], M[piv]] = [M[piv], M[i]];
+      for (let k = i + 1; k < n; k++) {
+        const f = M[k][i] / M[i][i];
+        for (let j = i; j <= n; j++) M[k][j] -= f * M[i][j];
+      }
+    }
+    const x = new Float64Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+      let s = M[i][n];
+      for (let j = i + 1; j < n; j++) s -= M[i][j] * x[j];
+      x[i] = s / M[i][i];
+    }
+    return x;
+  }
+  /* підгін λ (і за наявності точок — перекосу μ,ν) за опорними висотами */
+  function fitGBR(z, w, h, controls, full) {
+    const n = controls.length;
+    if (!n) return null;
+    const cols = full && n >= 4 ? 4 : 2;
+    const A = new Float64Array(cols * cols), B = new Float64Array(cols);
+    const row = c => {
+      const zi = z[CORE_clamp(Math.round(c.y), 0, h - 1) * w + CORE_clamp(Math.round(c.x), 0, w - 1)];
+      return cols === 4 ? [zi, c.x / w, c.y / h, 1] : [zi, 1];
+    };
+    for (const c of controls) {
+      const r = row(c);
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < cols; j++) A[i * cols + j] += r[i] * r[j];
+        B[i] += r[i] * c.h;
+      }
+    }
+    const x = solveLin(A, B, cols);
+    if (!x) return null;
+    return cols === 4 ? { lam: x[0], mu: x[1], nu: x[2], c: x[3], n }
+                      : { lam: x[0], mu: 0, nu: 0, c: x[1], n };
+  }
+  const CORE_clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+  function correlate(a, b, n) {
+    let ma = 0, mb = 0;
+    for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    let sab = 0, sa = 0, sb = 0;
+    for (let i = 0; i < n; i++) { const u = a[i] - ma, v = b[i] - mb; sab += u * v; sa += u * u; sb += v * v; }
+    return (sa < 1e-20 || sb < 1e-20) ? 0 : sab / Math.sqrt(sa * sb);
+  }
+  const resample2 = (src, sw, sh, dw, dh) => {
+    const o = new Float32Array(dw * dh);
+    for (let y = 0; y < dh; y++) for (let x = 0; x < dw; x++)
+      o[y * dw + x] = src[Math.min(sh - 1, Math.round(y / Math.max(dh - 1, 1) * (sh - 1))) * sw +
+                          Math.min(sw - 1, Math.round(x / Math.max(dw - 1, 1) * (sw - 1)))];
+    return o;
+  };
+
+
+  /* ═══════════════════════════════════════════════════════════════════
+     СПЕКТРАЛЬНЕ ЗЛИТТЯ. Пентленд надійний там, де |sin σ·(ωx cos τ +
+     ωy sin τ)| велике, і сліпий там, де воно прямує до нуля — тобто на
+     частотах упоперек світла. Саме туди й ставимо апріор моделі,
+     попередньо підігнавши його енергію під SfS у надійній смузі.
+     Ваги гладкі (d²/(d²+c²)), бо різкий стик у спектрі дає дзвін.
+     ═══════════════════════════════════════════════════════════════════ */
+  function fuseSpectral(zs, zp, w, h, tiltDeg, slantDeg, cut, matchGain, lowFloor) {
+    const W = pow2(w), H = pow2(h);
+    const sr = padMirror(zs, w, h, W, H), si = new Float64Array(W * H);
+    const pr = padMirror(zp, w, h, W, H), pi = new Float64Array(W * H);
+    fft2d(sr, si, W, H, false); fft2d(pr, pi, W, H, false);
+    const ct = Math.cos(tiltDeg * RAD), st = Math.sin(tiltDeg * RAD);
+    const ss = Math.sin(slantDeg * RAD) || 1e-6;
+    const c = cut === undefined ? 0.25 : cut;
+    /* Підсилення підганяємо ЛИШЕ якщо апріор ще не приведений до спільної
+       лінійки. Якщо обидва канали вже прибиті до опорних висот, будь-яке
+       додаткове масштабування ламає сліпу смугу — перевірено болем. */
+    let es = 0, ep = 0;
+    const doGain = matchGain !== false;
+    for (let v = 0; v < H; v++) {
+      const wy = freq(v, H);
+      for (let u = 0; u < W; u++) {
+        const k = v * W + u;
+        if (Math.abs(ss * (freq(u, W) * ct + wy * st)) <= c) continue;
+        es += sr[k] * sr[k] + si[k] * si[k];
+        ep += pr[k] * pr[k] + pi[k] * pi[k];
+      }
+    }
+    const g = doGain ? CORE_clamp(ep > 1e-20 ? Math.sqrt(es / ep) : 1, 0.1, 10) : 1;
+    /* Три зони, а не дві. Найнижчі частоти не бере ніхто: там живе
+       нелінійність апріору, і саме її потім задають опорні висоти
+       через повний підгін λ, μ, ν, c. Апріор пускаємо лише туди, де
+       він справді єдине джерело — у сліпу смугу вище цього порога. */
+    const floor = lowFloor === undefined ? 0 : lowFloor;
+    for (let v = 0; v < H; v++) {
+      const wy = freq(v, H);
+      for (let u = 0; u < W; u++) {
+        const k = v * W + u, wx = freq(u, W);
+        const d = Math.abs(ss * (wx * ct + wy * st));
+        const wgt = (d * d) / (d * d + c * c);
+        const lo = Math.sqrt(wx * wx + wy * wy) < floor ? 0 : 1;
+        sr[k] = wgt * sr[k] + (1 - wgt) * g * pr[k] * lo;
+        si[k] = wgt * si[k] + (1 - wgt) * g * pi[k] * lo;
+      }
+    }
+    fft2d(sr, si, W, H, true);
+    return { z: cropTo(sr, W, w, h), gain: g };
+  }
+
   return {
     clamp, mod360, julianDay, solarPosition, shadowRatio,
     shadowScore, otsu, morph, open, close, components, meanAxis, extentAlong, casterAnchor,
     heightFromShadow, heightPerPixel, median, theilSen, rsquared,
-    hillshade, lightAzimuthFromShadow, hypso, stats
+    hillshade, lightAzimuthFromShadow, hypso, stats,
+    pow2, fft1d, fft2d, padMirror, freq, pentlandSfS, frankotChellappa,
+    albedoNormalize, basRelief, solveLin, fitGBR, correlate, resample2, fuseSpectral
   };
 })();
 /* CORE>> */
@@ -649,6 +930,9 @@ const S = {
   thrMode: 'auto', thrBias: 0,
   morph: 2, minArea: 200, minElong: 1.4,
   useModel: 1,
+  layer: 0,
+  sfsRes: 192, albedoBins: 10, sfsEps: 0.02, fuseCut: 0.25, fuse: 1,
+  reliefSrc: 'sfs',             // shadow | prior | sfs | fused
   layer: 0,                     // 0 гіпсометрія · 1 альбедо · 2 чиста відмивка
   frame: null,                  // { canvas, data, w, h }
   shot: null,                   // результат аналізу
@@ -664,7 +948,8 @@ const els = {};
  'tabSun','tabShade','tabRes','paneSun','paneShade','paneRes',
  'segSun','rElev','oElev','inLat','inLon','inTime','bGeo','bNow','sunKv','bTilt','tiltVal','tiltNote',
  'rDark','oDark','rBlue','oBlue','segThr','rThr','oThr','rMorph','oMorph','rArea','oArea','rElong','oElong',
- 'segModel','mTest','mlog','resEmpty','resBody','sunSrcTag','vid'].forEach(k => els[k] = $(k));
+ 'segModel','mTest','mlog','resEmpty','resBody','sunSrcTag',
+ 'segRelief','rSfsRes','oSfsRes','rBins','oBins','rEps','oEps','rFuseCut','oFuseCut','vid'].forEach(k => els[k] = $(k));
 { const miss = Object.keys(els).filter(k => !els[k]);
   if (miss.length) document.body.insertAdjacentHTML('afterbegin',
     '<div style="position:fixed;z-index:999;inset:auto 0 0 0;background:#ff3c6e;color:#000;padding:8px;font:11px monospace">Розмітка не збігається з кодом: ' + miss.join(', ') + '</div>'); }
@@ -956,6 +1241,12 @@ async function analyse() {
   }
 
   S.shot = { frame, seg, mean, shadowDir, lightAz, el, items, prior, fit, flip, stamp: new Date() };
+  if (items.length) {
+    setP(0.9, 'SfS');
+    await new Promise(r => setTimeout(r, 16));
+    const b = buildFields(S.shot);
+    S.shot.fields = b.fields; S.shot.meta = b.meta;
+  }
   buildRelief();
   renderResults();
   els.tBlobs.textContent = items.length;
@@ -970,6 +1261,97 @@ async function analyse() {
   navigator.vibrate && navigator.vibrate([10, 40, 18]);
   toast(items.length ? items.length + ' тіней · світло ' + fmt(lightAz, 0) + '° у кадрі · розкид ' + fmt(mean.spread, 2)
                      : 'Тіней не знайдено — покрути пороги в «Тіні».', items.length ? undefined : 'warn');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SHAPE FROM SHADING
+   Кожен канал приводиться до однієї лінійки — опорних висот із тіней, —
+   і лише після цього їх можна порівнювати чи зливати.
+   ═══════════════════════════════════════════════════════════════════════ */
+function computeSfS(frame, seg, lightAz, elev) {
+  const sm = downscale(frame, S.sfsRes);
+  const w = sm.w, h = sm.h;
+  const alb = CORE.albedoNormalize(sm.data, w, h, S.albedoBins, Math.max(8, (w * h) / 400));
+  const I = Float32Array.from(alb.data);
+  /* у кинутій тіні рівняння відбиття не діє взагалі: там немає прямого
+     світла. Замінюємо на середнє, щоб край тіні не читався як обрив. */
+  const mf = new Float32Array(frame.w * frame.h);
+  for (let i = 0; i < mf.length; i++) mf[i] = seg.mask[i];
+  const ms = CORE.resample2(mf, frame.w, frame.h, w, h);
+  let mean = 0, cnt = 0;
+  for (let i = 0; i < I.length; i++) if (ms[i] < 0.5) { mean += I[i]; cnt++; }
+  mean = cnt ? mean / cnt : 0;
+  let masked = 0;
+  for (let i = 0; i < I.length; i++) if (ms[i] >= 0.5) { I[i] = mean; masked++; }
+  const slant = CORE.clamp(90 - elev, 1, 89);
+  const r = CORE.pentlandSfS(I, w, h, lightAz, slant, S.sfsEps);
+  return { z: r.z, w, h, slant, blind: r.blindShare, segments: alb.segments, maskedShare: masked / I.length };
+}
+
+/* приведення поля до опорних висот; від'ємний λ означає, що рельєф
+   вивернуто — тіні тут виступають арбітром опуклості нарівні з апріором */
+function anchorField(z, w, h, ctrl) {
+  if (!ctrl || ctrl.length < 2) return { z: Float32Array.from(z), fit: null, flipped: false };
+  let f = CORE.fitGBR(z, w, h, ctrl, ctrl.length >= 10);
+  if (!f) return { z: Float32Array.from(z), fit: null, flipped: false };
+  let src = z, flipped = false;
+  if (f.lam < 0) {
+    src = new Float32Array(z.length);
+    for (let i = 0; i < z.length; i++) src[i] = -z[i];
+    flipped = true;
+    f = CORE.fitGBR(src, w, h, ctrl, ctrl.length >= 10) || f;
+  }
+  const out = CORE.basRelief(src, w, h, f.lam, f.mu, f.nu, f.c);
+  let ss = 0;
+  for (const c of ctrl) {
+    const v = out[CORE.clamp(Math.round(c.y), 0, h - 1) * w + CORE.clamp(Math.round(c.x), 0, w - 1)];
+    ss += (v - c.h) ** 2;
+  }
+  return { z: out, fit: f, flipped, rms: Math.sqrt(ss / ctrl.length) };
+}
+
+/* усі доступні поля рахуються одразу — перемикач джерела має бути миттєвим */
+function buildFields(sh) {
+  const f = sh.frame;
+  const sfs = computeSfS(f, sh.seg, sh.lightAz, sh.el);
+  const w = sfs.w, h = sfs.h;
+  const ctrl = [];
+  for (const it of sh.items) {
+    ctrl.push({ x: it.x / f.w * (w - 1), y: it.y / f.h * (h - 1), h: it.h });
+    ctrl.push({ x: it.tipX / f.w * (w - 1), y: it.tipY / f.h * (h - 1), h: 0 });  /* вістря тіні лежить на землі */
+  }
+  const fields = {}, meta = { w, h, ctrl: ctrl.length, sfs };
+
+  /* 1. тільки виміряне: горби на місцях відкидачів */
+  const bumps = new Float32Array(w * h);
+  for (const it of sh.items) {
+    const cx = it.x / f.w * (w - 1), cy = it.y / f.h * (h - 1);
+    const rad = Math.max(3, Math.sqrt(it.area) / f.w * w);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++)
+      bumps[j * w + i] += it.h * Math.exp(-((i - cx) ** 2 + (j - cy) ** 2) / (2 * rad * rad));
+  }
+  fields.shadow = { z: bumps, fit: null, flipped: false, rms: 0 };
+
+  /* 2. апріор моделі, прибитий до тих самих опор */
+  let priorSmall = null;
+  if (sh.prior) {
+    priorSmall = CORE.resample2(sh.prior.data, sh.prior.dw, sh.prior.dh, w, h);
+    fields.prior = anchorField(priorSmall, w, h, ctrl);
+  }
+
+  /* 3. чистий SfS */
+  fields.sfs = anchorField(sfs.z, w, h, ctrl);
+  meta.corrPrior = priorSmall ? CORE.correlate(sfs.z, priorSmall, w * h) : null;
+
+  /* 4. злиття: апріор затикає сліпу вісь, підсилення підганяється, і лише
+        потім усе разом прибивається до опор */
+  if (priorSmall && S.fuse) {
+    const fu = CORE.fuseSpectral(sfs.z, priorSmall, w, h, sh.lightAz, sfs.slant, S.fuseCut, true);
+    fields.fused = anchorField(fu.z, w, h, ctrl);
+    meta.fuseGain = fu.gain;
+  }
+  return { fields, meta };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1052,26 +1434,12 @@ function initGL() {
 function buildRelief() {
   initGL();
   const sh = S.shot, f = S.frame;
-  const GW = 200, GH = Math.max(8, Math.round(200 * f.h / f.w));
-  const z = new Float32Array(GW * GH);
-  let mode = 'shadow';
-  if (sh.prior && sh.fit && sh.fit.r2 > 0.25 && sh.fit.a > 0) {
-    mode = 'prior';
-    const pGnd = CORE.stats(sh.prior.data, sh.prior.data.length).median;
-    for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-      const p = sampleGrid(sh.prior.data, sh.prior.dw, sh.prior.dh, i / (GW - 1), j / (GH - 1));
-      z[j * GW + i] = Math.max(0, sh.fit.a * (p - pGnd));
-    }
-  } else {
-    for (const it of sh.items) {
-      const cx = it.x / f.w * (GW - 1), cy = it.y / f.h * (GH - 1);
-      const rad = Math.max(3, Math.sqrt(it.area) / f.w * GW);
-      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-        const d2 = (i - cx) ** 2 + (j - cy) ** 2;
-        z[j * GW + i] += it.h * Math.exp(-d2 / (2 * rad * rad));
-      }
-    }
-  }
+  let z, GW, GH, mode = S.reliefSrc;
+  const F = sh.fields;
+  if (F && F[mode]) { z = F[mode].z; GW = sh.meta.w; GH = sh.meta.h; }
+  else if (F && F.sfs) { z = F.sfs.z; GW = sh.meta.w; GH = sh.meta.h; mode = 'sfs'; }
+  else if (F && F.shadow) { z = F.shadow.z; GW = sh.meta.w; GH = sh.meta.h; mode = 'shadow'; }
+  else { GW = 96; GH = Math.max(8, Math.round(96 * f.h / f.w)); z = new Float32Array(GW * GH); mode = 'none'; }
   sh.relief = { z, GW, GH, mode };
 
   const st = CORE.stats(z, z.length);
@@ -1084,7 +1452,7 @@ function buildRelief() {
   const pos = geo.attributes.position, col = new Float32Array(GW * GH * 3);
   const exag = 0.55 / span;
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-    const src = j * GW + i, dst = (GH - 1 - j) * GW + i;     // плейн будується згори вниз
+    const src = j * GW + i, dst = (GH - 1 - j) * GW + i;
     pos.setZ(dst, (z[src] - st.min) * exag);
     let r, g, b;
     const t = (z[src] - st.min) / span;
@@ -1093,8 +1461,8 @@ function buildRelief() {
       r = f.data[q] / 255; g = f.data[q + 1] / 255; b = f.data[q + 2] / 255;
     } else if (S.layer === 2) { r = g = b = 1; }
     else { const c = CORE.hypso(t); r = c[0] / 255; g = c[1] / 255; b = c[2] / 255; }
-    const s = 0.25 + 0.75 * shade[src];
-    col[dst * 3] = r * s; col[dst * 3 + 1] = g * s; col[dst * 3 + 2] = b * s;
+    const sfac = 0.25 + 0.75 * shade[src];
+    col[dst * 3] = r * sfac; col[dst * 3 + 1] = g * sfac; col[dst * 3 + 2] = b * sfac;
   }
   pos.needsUpdate = true;
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -1143,6 +1511,18 @@ function renderResults() {
         <span>R²</span><b class="${sh.fit && sh.fit.r2 > 0.6 ? 'ok' : sh.fit && sh.fit.r2 > 0.25 ? 'warn' : 'bad'}">${sh.fit ? fmt(sh.fit.r2, 3) : '—'}</b>
       </div>
     </div>
+    ${sh.meta ? `<div class="card">
+      <h5>Shape from shading</h5>
+      <div class="kv">
+        <span>Сітка</span><b>${sh.meta.w}×${sh.meta.h}</b>
+        <span>Сліпа смуга</span><b class="${sh.meta.sfs.blind > 0.25 ? 'warn' : 'ok'}">${fmt(sh.meta.sfs.blind * 100, 1)}%</b>
+        <span>Кошиків альбедо</span><b>${sh.meta.sfs.segments}</b>
+        <span>Замасковано тінню</span><b>${fmt(sh.meta.sfs.maskedShare * 100, 1)}%</b>
+        <span>Опорних точок</span><b>${sh.meta.ctrl}</b>
+        <span>SfS ↔ апріор</span><b class="${sh.meta.corrPrior === null ? '' : Math.abs(sh.meta.corrPrior) > 0.4 ? 'ok' : 'warn'}">${sh.meta.corrPrior === null ? '—' : fmt(sh.meta.corrPrior, 3)}</b>
+        ${Object.entries(sh.fields || {}).map(([k, v]) => `<span>Нев'язка · ${k}</span><b>${v.fit ? fmt(v.rms, 2) + ' px' : '—'}${v.flipped ? ' ⟲' : ''}</b>`).join('')}
+      </div>
+    </div>` : ''}
     <div class="card">
       <h5>Що з цим не так <em style="color:var(--text-3);font-style:normal">· пороги, не модель</em></h5>
       ${verdicts(sh).map(v => `<div class="note ${v.k}"><i></i><span><b>${v.t}.</b> ${v.x}</span></div>`).join('')}
@@ -1156,6 +1536,9 @@ function verdicts(sh) {
   if (sh.mean.spread > 0.4) v.push({ k: 'bad', t: 'Тіні не паралельні', x: 'Розкид ' + fmt(sh.mean.spread, 2) + '. Або в маску потрапило щось стороннє, або ракурс надто косий, або джерело світла близьке.' });
   else if (sh.mean.spread > 0.15) v.push({ k: 'warn', t: 'Напрямки гуляють', x: 'Розкид ' + fmt(sh.mean.spread, 2) + ' — азимут визначено нестійко, висоти теж попливуть.' });
   if (S.tilt !== null && S.tilt > 15) v.push({ k: 'bad', t: 'Косий ракурс', x: fmt(S.tilt, 0) + '° від надиру. Формула вважає землю паралельною матриці; на такому куті довжина тіні в пікселях занижена.' });
+  if (sh.meta && sh.meta.sfs.blind > 0.25) v.push({ k: 'warn', t: 'Широка сліпа смуга', x: fmt(sh.meta.sfs.blind * 100, 0) + '% частот перпендикулярні до світла — там про нахил інформації нема. Затикає її лише апріор.' });
+  if (sh.meta && sh.meta.corrPrior !== null && Math.abs(sh.meta.corrPrior) < 0.2) v.push({ k: 'warn', t: 'SfS і апріор не згодні', x: 'Кореляція ' + fmt(sh.meta.corrPrior, 2) + '. Один із каналів бачить сцену неправильно — швидше за все альбедо не вирівнялось.' });
+  if (sh.fields && sh.fields.sfs && sh.fields.sfs.flipped) v.push({ k: 'warn', t: 'Рельєф перевернуто', x: 'Підгін до опор дав від\u02bcємний λ, тобто SfS зібрав яму замість горба. Виправлено, але перевір очима.' });
   if (!sh.prior) v.push({ k: 'warn', t: 'Апріору нема', x: 'Щільний рельєф зібрано з самих вимірів, тобто це горби на місцях відкидачів, а не поверхня.' });
   else if (sh.fit && sh.fit.r2 < 0.25) v.push({ k: 'warn', t: 'Апріор не корелює з тінями', x: 'R² = ' + fmt(sh.fit.r2, 2) + '. Модель бачить сцену інакше, ніж міряють тіні — довіряй таблиці, не поверхні.' });
   if (sh.items.length && sh.items.length < 3) v.push({ k: 'warn', t: 'Мало тіней', x: 'Для підгону апріору треба щонайменше три. Азимут з однієї плями теж ненадійний.' });
@@ -1325,6 +1708,19 @@ els.inTime.onchange = setWhenFromInput;
 seg2(els.segSun, S.sunMode, v => { S.sunMode = v; recomputeSun(); if (S.shot) reseg(); });
 seg2(els.segThr, S.thrMode, v => { S.thrMode = v; reseg(); });
 seg2(els.segModel, S.useModel, v => { S.useModel = +v; if (+v) modelDead = false; });
+seg2(els.segRelief, S.reliefSrc, v => {
+  S.reliefSrc = v;
+  if (S.shot && S.shot.fields) {
+    if (!S.shot.fields[v]) return toast(v === 'prior' || v === 'fused' ? 'Апріору нема — нема чого показувати' : 'Поля нема', 'warn');
+    buildRelief(); renderResults(); setMode('relief');
+  }
+});
+slider(els.rSfsRes, els.oSfsRes, 'sfsRes', v => fmt(v, 0));
+slider(els.rBins, els.oBins, 'albedoBins', v => fmt(v, 0));
+slider(els.rEps, els.oEps, 'sfsEps', v => fmt(v, 3));
+slider(els.rFuseCut, els.oFuseCut, 'fuseCut', v => fmt(v, 2));
+for (const r of [els.rSfsRes, els.rBins, els.rEps, els.rFuseCut])
+  r.addEventListener('change', () => { if (S.shot && !S.busy) { toast('Переганяю кадр…'); setTimeout(reseg, 30); } });
 slider(els.rElev, els.oElev, 'elevManual', v => fmt(v, 0) + '°', () => { recomputeSun(); if (S.sunMode === 'manual' && S.shot) reseg(); });
 slider(els.rDark, els.oDark, 'wDark', v => fmt(v, 2));
 slider(els.rBlue, els.oBlue, 'wBlue', v => fmt(v, 2));
